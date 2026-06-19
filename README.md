@@ -1,7 +1,7 @@
 # courier-dz
 
 [![npm version](https://img.shields.io/npm/v/courier-dz.svg)](https://www.npmjs.com/package/courier-dz)
-[![license](https://img.shields.io/npm/l/courier-dz.svg)](./LICENSE)
+[![license](https://img.shields.io/npm/l/courier-dz.svg)](https://opensource.org/licenses/MIT)
 
 Unified API client for Algerian shipping providers. One package, one interface for **30 providers**.
 
