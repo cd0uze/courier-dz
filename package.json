@@ -1,0 +1,45 @@
+{
+  "name": "courier-dz",
+  "version": "1.0.0",
+  "description": "Unified API client for Algerian courier/delivery providers (Yalidine, Maystro, Ecotrack, Zimou, ZR Express, and more)",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "keywords": [
+    "algeria",
+    "courier",
+    "delivery",
+    "shipping",
+    "yalidine",
+    "maystro",
+    "ecotrack",
+    "zimou",
+    "zr-express",
+    "algerian-shipping",
+    "dz",
+    "livraison"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.1.0",
+    "jest": "^29.7.0"
+  }
+}
