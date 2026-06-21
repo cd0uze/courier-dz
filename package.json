@@ -1,6 +1,6 @@
 {
   "name": "courier-dz",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Unified API client for Algerian courier/delivery providers (Yalidine, Maystro, Ecotrack, Zimou, ZR Express, and more)",
   "type": "module",
   "main": "./dist/index.cjs",
