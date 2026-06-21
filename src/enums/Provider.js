@@ -260,7 +260,7 @@ export const PROVIDER_METADATA = Object.freeze({
     name: 'E48hrLivraison', title: '48Hr Livraison',
     website: 'https://48hr.ecotrack.dz/',
     description: "48Hr Livraison est une entreprise algérienne opérant dans le secteur de livraison express.",
-    logo: null,
+    logo: 'https://cdn1.ecotrack.dz/48hr/images/login_logoze5m7ZB.png',
     apiDocs: 'https://48hr.ecotrack.dz/',
     support: 'https://cdn1.ecotrack.dz/48hr/images/login_logoze5m7ZB.png',
     trackingUrl: 'https://suivi.ecotrack.dz/suivi/',
