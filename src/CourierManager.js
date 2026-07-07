@@ -19,7 +19,7 @@ import { InvalidCredentialsError } from './exceptions/InvalidCredentialsError.js
  * Resolves the correct adapter for a given provider, hydrates credentials
  * from config or runtime values, and caches adapter instances for re-use.
  *
- * All 30 Algerian courier providers are supported. Ecotrack-engine sub-providers
+ * All 32 Algerian courier providers are supported. Ecotrack-engine sub-providers
  * (DHD, Conexlog, Anderson, Swift, AlloLivraison, etc.) reuse EcotrackAdapter
  * with provider-specific base URLs.
  *
