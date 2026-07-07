@@ -5,10 +5,12 @@ import { MaystroAdapter } from './adapters/MaystroAdapter.js';
 import { ProcolisAdapter } from './adapters/ProcolisAdapter.js';
 import { ZimouAdapter } from './adapters/ZimouAdapter.js';
 import { ZrExpressNewAdapter } from './adapters/ZrExpressNewAdapter.js';
+import { NoestAdapter } from './adapters/NoestAdapter.js';
 import { TokenCredentials } from './data/credentials/TokenCredentials.js';
 import { YalidineCredentials } from './data/credentials/YalidineCredentials.js';
 import { ProcolisCredentials } from './data/credentials/ProcolisCredentials.js';
 import { ZrExpressNewCredentials } from './data/credentials/ZrExpressNewCredentials.js';
+import { NoestCredentials } from './data/credentials/NoestCredentials.js';
 import { InvalidCredentialsError } from './exceptions/InvalidCredentialsError.js';
 
 /**
@@ -178,6 +180,13 @@ export class CourierManager {
       });
     }
 
+    // ── Noest ─────────────────────────────────────────────────────────────
+    if (providerKey === PROVIDERS.NOEST) {
+      return new NoestAdapter({
+        credentials: this._buildNoestCredentials(providerKey, creds),
+      });
+    }
+
     // ── Ecotrack engine (generic base + all sub-providers) ────────────────
     if (isEcotrackEngine(providerKey)) {
       return new EcotrackAdapter({
@@ -236,6 +245,14 @@ export class CourierManager {
   _buildZrExpressNewCredentials(providerKey, creds) {
     try {
       return ZrExpressNewCredentials.fromObject(creds);
+    } catch (err) {
+      throw new InvalidCredentialsError(providerKey, err.message, err);
+    }
+  }
+
+  _buildNoestCredentials(providerKey, creds) {
+    try {
+      return NoestCredentials.fromObject(creds);
     } catch (err) {
       throw new InvalidCredentialsError(providerKey, err.message, err);
     }

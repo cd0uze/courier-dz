@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { LABEL_TYPE } from '../enums/LabelType.js';
@@ -106,6 +106,7 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
         'X-Api-Key': credentials.apiKey,
       },
       httpClient,
+      rateLimits: getProviderRateLimits(PROVIDERS.ZREXPRESS_NEW),
     });
     this.providerEnum = PROVIDERS.ZREXPRESS_NEW;
     this.credentials = credentials;
@@ -129,9 +130,16 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
   }
 
   /**
-   * Get effective delivery rates for all wilaya territories.
-   * The fromWilayaId/toWilayaId parameters are accepted for consistency but ignored
-   * — the endpoint always returns the full rate table for the supplier account.
+   * Get effective delivery rates for ALL destination territories.
+   *
+   * ZR Express NEW prices PER COMMUNE (and per wilaya). The endpoint returns a
+   * mix of commune-level and wilaya-level entries, each with a delivery price
+   * for `home`, `pickup-point` and `return`. We keep every level faithfully and
+   * expose the territory UUID + level so the template (Phase 2/3) can store
+   * commune-level rows and resolve their parent wilaya via getTerritories().
+   *
+   * `toWilayaId` filters by territory `code` when provided (matches commune or
+   * wilaya entries having that code); `fromWilayaId` is irrelevant to this API.
    */
   async getRates(fromWilayaId = null, toWilayaId = null) {
     const response = await this.get('api/v1/delivery-pricing/rates');
@@ -144,37 +152,124 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
     for (const rate of rates) {
       if (!rate || typeof rate !== 'object') continue;
 
-      // Only include wilaya-level entries — commune-level can't map to an integer wilaya code
       const level = String(rate.toTerritoryLevel ?? '').toLowerCase();
-      if (level !== 'wilaya') continue;
+      const code = Number(rate.toTerritoryCode ?? 0);
 
-      const wilayaCode = Number(rate.toTerritoryCode ?? 0);
-      if (wilayaCode === 0) continue;
-
-      if (toWilayaId != null && wilayaCode !== toWilayaId) continue;
+      if (toWilayaId != null && code !== Number(toWilayaId)) continue;
 
       let homePrice = 0;
       let stopDeskPrice = 0;
+      let returnPrice = null;
 
       for (const dp of rate.deliveryPrices ?? []) {
         const type = String(dp.deliveryType ?? '').toLowerCase();
         const price = Number(dp.price ?? 0);
         if (type === 'home') homePrice = price;
         else if (type === 'pickup-point') stopDeskPrice = price;
+        else if (type === 'return') returnPrice = price;
       }
 
       result.push(new RateData({
         provider: PROVIDERS.ZREXPRESS_NEW,
-        toWilayaId: wilayaCode,
+        toWilayaId: code,
         toWilayaName: String(rate.toTerritoryName ?? ''),
+        toWilayaNameAr: rate.toTerritoryNameArabic ?? null,
         homeDeliveryPrice: homePrice,
         stopDeskPrice,
+        returnPrice,
         deliveryType: DELIVERY_TYPE.HOME,
         fromWilayaId,
+        hasCommunePricing: true,
+        territoryId: rate.toTerritoryId ?? null,
+        territoryLevel: level || null,
       }));
     }
 
     return result;
+  }
+
+  /**
+   * Retrieve territories (wilayas and/or communes), paginated.
+   * Each item carries: id (UUID), code (int), name, nameArabic, level,
+   * parentId (UUID, commune→wilaya), and delivery capability flags.
+   *
+   * @param {object} [opts]
+   * @param {string|null} [opts.level] - 'wilaya' or 'commune' to filter
+   * @param {string|null} [opts.parentId] - parent wilaya UUID (to list its communes)
+   * @param {number} [opts.pageSize]
+   * @returns {Promise<Array<{id:string, code:number, name:string, nameArabic:string|null, level:string, parentId:string|null, hasHomeDelivery:boolean, hasPickupPoint:boolean}>>}
+   */
+  async getTerritories({ level = null, parentId = null, pageSize = 1000 } = {}) {
+    const filters = [];
+    if (level) filters.push({ field: 'level', operator: 'eq', value: level });
+    if (parentId) filters.push({ field: 'parentId', operator: 'eq', value: parentId });
+
+    const body = { pageNumber: 1, pageSize, orderBy: ['code asc'] };
+    if (filters.length > 0) body.advancedFilter = { logic: 'and', filters };
+
+    const out = [];
+    let pageNumber = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await this.post('api/v1/territories/search', { ...body, pageNumber });
+      const items = res?.items ?? [];
+      for (const t of items) {
+        out.push({
+          id: t.id,
+          code: Number(t.code ?? 0),
+          name: String(t.name ?? ''),
+          nameArabic: t.nameArabic ?? null,
+          level: String(t.level ?? ''),
+          parentId: t.parentId ?? null,
+          hasHomeDelivery: Boolean(this.dig(t, 'delivery', 'hasHomeDelivery')),
+          hasPickupPoint: Boolean(this.dig(t, 'delivery', 'hasPickupPoint')),
+        });
+      }
+      if (!res?.hasNext) break;
+      pageNumber += 1;
+    }
+    return out;
+  }
+
+  /**
+   * List hubs, optionally only pickup points (stop-desks). Paginated.
+   * `POST /api/v1/hubs/search`. Each hub carries: id (UUID — the `hubId` used on
+   * createOrder), name, type, isPickupPoint, address (with city/district +
+   * territory UUIDs + coordinates), phone, openingHours.
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.pickupOnly=true] - keep only pickup-point hubs
+   * @param {number} [opts.pageSize]
+   * @returns {Promise<Array<{id:string, name:string, isPickupPoint:boolean, cityName:string, communeName:string, cityTerritoryId:string|null, districtTerritoryId:string|null, address:string, phones:string[], map:string|null, openingHours:string|null}>>}
+   */
+  async getOffices({ pickupOnly = true, pageSize = 1000 } = {}) {
+    const out = [];
+    let pageNumber = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await this.post('api/v1/hubs/search', { pageNumber, pageSize, includeServices: false });
+      for (const h of res?.items ?? []) {
+        if (pickupOnly && !h.isPickupPoint) continue;
+        const addr = h.address ?? {};
+        const coords = addr.coordinates ?? {};
+        out.push({
+          id: h.id,
+          name: String(h.name ?? ''),
+          isPickupPoint: Boolean(h.isPickupPoint),
+          cityName: String(addr.city ?? ''),
+          communeName: String(addr.district ?? ''),
+          cityTerritoryId: addr.cityTerritoryId ?? null,
+          districtTerritoryId: addr.districtTerritoryId ?? null,
+          address: String(addr.street ?? ''),
+          phones: [h.phone?.number1, h.phone?.number2, h.phone?.number3].filter(Boolean).map(String),
+          map: (coords.lat != null && coords.lng != null) ? `${coords.lat},${coords.lng}` : null,
+          openingHours: h.openingHours ? String(h.openingHours) : null,
+        });
+      }
+      if (!res?.hasNext) break;
+      pageNumber += 1;
+    }
+    return out;
   }
 
   getCreateOrderValidationRules() {
@@ -207,7 +302,31 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
    * The district (commune) UUID must be provided as "zr_district:{uuid}".
    */
   async createOrder(data) {
-    const [cityTerritoryId, districtTerritoryId, cleanNote] = this._parseTerritoryIds(
+    const payload = this._buildParcelPayload(data);
+
+    const response = await this.post('api/v1/parcels', payload);
+    const parcelId = response.id ?? null;
+
+    if (!parcelId) {
+      throw new CourierError('ZR Express NEW did not return a parcel ID after creation.');
+    }
+
+    // Two-step: fetch the full parcel resource after creation
+    return this.getOrder(parcelId);
+  }
+
+  /**
+   * Build the SingleParcelCreationRequest payload for one order.
+   *
+   * Requires city + district territory UUIDs (ZR Express NEW keys delivery
+   * addresses by opaque territory UUIDs, never by wilaya code). They are read
+   * from CreateOrderData.notes via "zr_city:{uuid}|zr_district:{uuid}|...".
+   *
+   * @param {import('../data/CreateOrderData.js').CreateOrderData} data
+   * @returns {object} SingleParcelCreationRequest
+   */
+  _buildParcelPayload(data) {
+    const [cityTerritoryId, districtTerritoryId, , hubId] = this._parseTerritoryIds(
       data.notes,
       data.toWilayaId,
     );
@@ -226,13 +345,27 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
       );
     }
 
+    // ZR requires the merchant's SOURCE hub id on every parcel. It is passed via
+    // notes ("zr_hub:{uuid}") or, for a pickup-point delivery, falls back to the
+    // chosen destination hub in stopDeskId.
+    const sourceHubId = hubId
+      ?? (data.deliveryType === DELIVERY_TYPE.STOP_DESK ? data.stopDeskId : null);
+
+    if (!sourceHubId) {
+      throw new CourierError(
+        'ZR Express NEW requires a hub id. Configure the ZR source hub for the ' +
+        'store and pass it via notes: "zr_hub:{uuid}|...".',
+      );
+    }
+
     const payload = {
+      hubId: String(sourceHubId),
       customer: {
         customerId: this._randomUuid(),
         name: `${data.firstName} ${data.lastName}`.trim(),
         phone: {
-          number1: data.phone,
-          number2: data.phoneAlt ?? null,
+          number1: this._intlPhone(data.phone),
+          number2: this._intlPhone(data.phoneAlt),
         },
       },
       deliveryAddress: {
@@ -254,10 +387,6 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
       externalId: data.orderId,
     };
 
-    if (data.deliveryType === DELIVERY_TYPE.STOP_DESK && data.stopDeskId != null) {
-      payload.hubId = String(data.stopDeskId);
-    }
-
     if (data.weight != null) {
       payload.weight = { weight: data.weight };
     }
@@ -268,15 +397,48 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
       payload.orderedProducts[0].height = data.height;
     }
 
-    const response = await this.post('api/v1/parcels', payload);
-    const parcelId = response.id ?? null;
+    return payload;
+  }
 
-    if (!parcelId) {
-      throw new CourierError('ZR Express NEW did not return a parcel ID after creation.');
+  /**
+   * Create multiple parcels in a single native bulk call.
+   *
+   * ZR Express NEW caps a bulk request at 100 parcels (documented), so we chunk
+   * the input and aggregate the per-item successes/failures across chunks.
+   *
+   * @param {Array<import('../data/CreateOrderData.js').CreateOrderData>} dataArray
+   * @returns {Promise<{totalRequested:number, successCount:number, failureCount:number, successes:Array, failures:Array}>}
+   */
+  async bulkCreateOrders(dataArray) {
+    const list = Array.isArray(dataArray) ? dataArray : [dataArray];
+    const MAX_PER_REQUEST = 100;
+
+    const aggregate = {
+      totalRequested: list.length,
+      successCount: 0,
+      failureCount: 0,
+      successes: [],
+      failures: [],
+    };
+
+    for (let offset = 0; offset < list.length; offset += MAX_PER_REQUEST) {
+      const chunk = list.slice(offset, offset + MAX_PER_REQUEST);
+      const parcels = chunk.map((data) => this._buildParcelPayload(data));
+
+      const res = await this.post('api/v1/parcels/bulk', { parcels });
+
+      // Re-base the per-item index onto the original array position.
+      for (const s of res?.successes ?? []) {
+        aggregate.successes.push({ ...s, index: offset + Number(s.index ?? 0) });
+        aggregate.successCount += 1;
+      }
+      for (const f of res?.failures ?? []) {
+        aggregate.failures.push({ ...f, index: offset + Number(f.index ?? 0) });
+        aggregate.failureCount += 1;
+      }
     }
 
-    // Two-step: fetch the full parcel resource after creation
-    return this.getOrder(parcelId);
+    return aggregate;
   }
 
   async getOrder(trackingNumber) {
@@ -305,6 +467,60 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
 
     const response = await this.delete(`api/v1/parcels/${parcelId}`);
     return response.id != null || Object.keys(response).length === 0;
+  }
+
+  /**
+   * Delete multiple parcels by their internal UUIDs (native bulk).
+   * Capped at 200 per request (documented); chunked otherwise.
+   *
+   * @param {string[]} parcelIds
+   * @returns {Promise<{totalRequested:number, deletedCount:number, results:Array}>}
+   */
+  async bulkDeleteByIds(parcelIds) {
+    const ids = (Array.isArray(parcelIds) ? parcelIds : [parcelIds]).map(String);
+    return this._bulkDeleteChunked('api/v1/parcels/bulk', 'parcelIds', ids, 200);
+  }
+
+  /**
+   * Delete multiple parcels by their tracking numbers (native bulk).
+   * Capped at 200 per request (documented); chunked otherwise.
+   *
+   * @param {string[]} trackingNumbers
+   * @returns {Promise<{totalRequested:number, deletedCount:number, results:Array}>}
+   */
+  async bulkDeleteByTracking(trackingNumbers) {
+    const list = (Array.isArray(trackingNumbers) ? trackingNumbers : [trackingNumbers]).map(String);
+    return this._bulkDeleteChunked(
+      'api/v1/parcels/bulk/by-tracking-number',
+      'trackingNumbers',
+      list,
+      200,
+    );
+  }
+
+  /**
+   * Move a parcel to a new workflow state ("ship"/dispatch it manually).
+   *
+   * @param {string} trackingOrId - tracking number or internal UUID
+   * @param {number} newStateId - target workflow state ID
+   * @param {object} [opts]
+   * @param {string|null} [opts.comment] - optional note recorded with the transition
+   * @param {string|null} [opts.deliveryPersonId]
+   * @param {string|null} [opts.arrivalHubId]
+   * @returns {Promise<boolean>} true when the transition was accepted
+   */
+  async shipOrder(trackingOrId, newStateId, opts = {}) {
+    const parcelId = this._isUuid(String(trackingOrId))
+      ? String(trackingOrId)
+      : await this._resolveParcelId(trackingOrId);
+
+    const body = { parcelId, newStateId };
+    if (opts.comment != null) body.comment = opts.comment;
+    if (opts.deliveryPersonId != null) body.deliveryPersonId = opts.deliveryPersonId;
+    if (opts.arrivalHubId != null) body.arrivalHubId = opts.arrivalHubId;
+
+    const response = await this.patch(`api/v1/parcels/${parcelId}/state`, body);
+    return response == null || response.id != null || Object.keys(response).length === 0;
   }
 
   /**
@@ -396,6 +612,7 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
   _parseTerritoryIds(notes, toWilayaId = null) {
     let cityId = null;
     let districtId = null;
+    let hubId = null;
     const remaining = [];
 
     for (const segment of String(notes ?? '').split('|')) {
@@ -404,6 +621,8 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
         cityId = s.slice('zr_city:'.length).trim() || null;
       } else if (s.startsWith('zr_district:')) {
         districtId = s.slice('zr_district:'.length).trim() || null;
+      } else if (s.startsWith('zr_hub:')) {
+        hubId = s.slice('zr_hub:'.length).trim() || null;
       } else if (s !== '') {
         remaining.push(s);
       }
@@ -419,7 +638,61 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
       cityId || null,
       districtId || null,
       remaining.length > 0 ? remaining.join(' | ') : null,
+      hubId || null,
     ];
+  }
+
+  /**
+   * Normalize an Algerian phone number to the international E.164 form ZR
+   * requires (e.g. "0550112233" → "+213550112233"). Returns null for empties.
+   * @param {string|null} phone
+   * @returns {string|null}
+   */
+  _intlPhone(phone) {
+    if (phone == null || phone === '') return null;
+    let digits = String(phone).replace(/[^\d+]/g, '');
+    if (digits.startsWith('+')) return digits;
+    digits = digits.replace(/\D/g, '');
+    if (digits.startsWith('00213')) return `+${digits.slice(2)}`;
+    if (digits.startsWith('213')) return `+${digits}`;
+    if (digits.startsWith('0')) return `+213${digits.slice(1)}`;
+    if (digits.length === 9) return `+213${digits}`; // local without leading 0
+    return `+${digits}`;
+  }
+
+  /**
+   * Generic chunked bulk-delete helper.
+   * Sends DELETE {path} with body { [bodyKey]: chunk } in chunks of `max`,
+   * aggregating the per-item results the API returns.
+   *
+   * @param {string} path
+   * @param {string} bodyKey - 'parcelIds' or 'trackingNumbers'
+   * @param {string[]} values
+   * @param {number} max - max items per request
+   * @returns {Promise<{totalRequested:number, deletedCount:number, results:Array}>}
+   */
+  async _bulkDeleteChunked(path, bodyKey, values, max) {
+    const aggregate = { totalRequested: values.length, deletedCount: 0, results: [] };
+
+    for (let offset = 0; offset < values.length; offset += max) {
+      const chunk = values.slice(offset, offset + max);
+      const res = await this.delete(path, {}, { [bodyKey]: chunk });
+
+      // Different deployments return slightly different shapes; normalise both.
+      const items = res?.results ?? res?.deleted ?? [];
+      if (Array.isArray(items) && items.length > 0) {
+        for (const r of items) {
+          aggregate.results.push(r);
+          if (r?.success !== false) aggregate.deletedCount += 1;
+        }
+      } else {
+        // No per-item payload → assume the whole chunk succeeded (2xx).
+        aggregate.deletedCount += chunk.length;
+        for (const v of chunk) aggregate.results.push({ id: v, success: true });
+      }
+    }
+
+    return aggregate;
   }
 
   async _resolveParcelId(trackingNumber) {

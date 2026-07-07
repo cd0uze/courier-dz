@@ -1,22 +1,27 @@
-/** Procolis / ZR Express (legacy) credentials: id + token pair */
+/** Procolis / ZR Express (legacy) credentials: token + key pair */
 export class ProcolisCredentials {
   /**
    * @param {object} params
-   * @param {string} params.id - Your Procolis account ID
    * @param {string} params.token - Your Procolis token
+   * @param {string} params.key - Your Procolis API key
    */
-  constructor({ id, token }) {
-    if (!id) throw new Error('ProcolisCredentials require an "id".');
+  constructor({ token, key }) {
     if (!token) throw new Error('ProcolisCredentials require a "token".');
-    this.id = id;
+    if (!key) throw new Error('ProcolisCredentials require a "key".');
     this.token = token;
+    this.key = key;
   }
 
-  /** @param {object} data @returns {ProcolisCredentials} */
+  /**
+   * Accepts both { token, key } and legacy { id, token } objects.
+   * @param {object} data
+   * @returns {ProcolisCredentials}
+   */
   static fromObject(data) {
-    return new ProcolisCredentials({
-      id: data.id ?? (() => { throw new Error('Procolis credentials require an "id".'); })(),
-      token: data.token ?? (() => { throw new Error('Procolis credentials require a "token".'); })(),
-    });
+    const token = data.token ?? data.id
+      ?? (() => { throw new Error('Procolis credentials require a "token".'); })();
+    const key = data.key ?? data.id
+      ?? (() => { throw new Error('Procolis credentials require a "key".'); })();
+    return new ProcolisCredentials({ token, key });
   }
 }

@@ -14,8 +14,10 @@ export {
   PROVIDER_METADATA,
   isYalidineEngine,
   isEcotrackEngine,
+  isProcolisEngine,
   requiresApiId,
   getBaseUrl,
+  getProviderRateLimits,
   getProviderMetadata,
   getAllProvidersMetadata,
 } from './enums/Provider.js';
@@ -55,6 +57,7 @@ export { TokenCredentials } from './data/credentials/TokenCredentials.js';
 export { YalidineCredentials } from './data/credentials/YalidineCredentials.js';
 export { ProcolisCredentials } from './data/credentials/ProcolisCredentials.js';
 export { ZrExpressNewCredentials } from './data/credentials/ZrExpressNewCredentials.js';
+export { NoestCredentials } from './data/credentials/NoestCredentials.js';
 
 // ── Adapters (for advanced use / custom extensions) ───────────────────────────
 export { AbstractAdapter } from './adapters/AbstractAdapter.js';
@@ -64,6 +67,7 @@ export { MaystroAdapter } from './adapters/MaystroAdapter.js';
 export { ProcolisAdapter } from './adapters/ProcolisAdapter.js';
 export { ZimouAdapter } from './adapters/ZimouAdapter.js';
 export { ZrExpressNewAdapter } from './adapters/ZrExpressNewAdapter.js';
+export { NoestAdapter } from './adapters/NoestAdapter.js';
 
 // ── Exceptions ────────────────────────────────────────────────────────────────
 export { CourierError } from './exceptions/CourierError.js';

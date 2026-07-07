@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { LABEL_TYPE } from '../enums/LabelType.js';
@@ -140,6 +140,7 @@ export class ZimouAdapter extends AbstractAdapter {
         Authorization: `Bearer ${credentials.token}`,
       },
       httpClient,
+      rateLimits: getProviderRateLimits(PROVIDERS.ZIMOU),
     });
     this.providerEnum = PROVIDERS.ZIMOU;
     this.credentials = credentials;
@@ -170,22 +171,141 @@ export class ZimouAdapter extends AbstractAdapter {
     }
   }
 
-  async getRates(fromWilayaId = null, _toWilayaId = null) {
+  /**
+   * Get the account's delivery price grid.
+   *
+   * Live shape of `GET /v3/my/prices` (the OpenAPI does NOT type this response):
+   *   [{ delivery_type_name, wilaya_name, wilaya_id, price1, price2, price3,
+   *      min_delivery_days, max_delivery_days }, ...]
+   * There is ONE row per (wilaya, delivery type). Zimou prices PER WILAYA (not
+   * per commune): home = "Express"/"Flexible" rows, stop-desk = "Point relais".
+   *
+   * ⚠️ The meaning of price1/price2/price3 is NOT documented by Zimou (and they
+   * are equal in live data). We therefore use price1 as the effective price and
+   * surface the unparsed tiers untouched in RateData has no field for them — see
+   * the per-row note. We do not invent a weight/zone interpretation for 2 & 3.
+   */
+  async getRates(fromWilayaId = null, toWilayaId = null) {
     const raw = await this.get('v3/my/prices');
     const rows = raw.data ?? raw;
 
     if (!Array.isArray(rows) || rows.length === 0) return [];
 
+    // Group rows by wilaya, collecting ALL candidate prices per type. Zimou is
+    // a ROUTER: /my/prices returns one row per PARTNER carrier (30+ rows per
+    // wilaya, many at 0 = partner doesn't serve it), with no partner/commune
+    // identifier — the charged price depends on the partner Zimou assigns at
+    // dispatch, which the API does not expose upfront. The best estimate is
+    // therefore the MOST COMMON non-zero price (mode, ties → cheapest); the
+    // template reconciles the real fee after dispatch (reconcileDeliveryFee).
+    const byWilaya = new Map();
+    const mode = (arr) => {
+      if (!arr.length) return null;
+      const freq = new Map();
+      for (const v of arr) freq.set(v, (freq.get(v) || 0) + 1);
+      return [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+    };
+
+    for (const item of rows) {
+      if (!item || typeof item !== 'object') continue;
+
+      const wid = Number(item.wilaya_id ?? 0);
+      if (toWilayaId != null && wid !== Number(toWilayaId)) continue;
+
+      if (!byWilaya.has(wid)) {
+        byWilaya.set(wid, {
+          wilayaId: wid,
+          wilayaName: String(item.wilaya_name ?? ''),
+          homePrices: [],
+          flexPrices: [],
+          deskPrices: [],
+          minDays: null,
+          maxDays: null,
+        });
+      }
+
+      const entry = byWilaya.get(wid);
+      const type = String(item.delivery_type_name ?? '').toLowerCase();
+      const price = Number(item.price1 ?? 0);
+
+      if (price > 0) {
+        if (type === 'point relais') entry.deskPrices.push(price);
+        else if (type === 'express') entry.homePrices.push(price);
+        else entry.flexPrices.push(price); // Flexible & co: fallback home types
+      }
+
+      if (entry.minDays == null && item.min_delivery_days != null) {
+        entry.minDays = Number(item.min_delivery_days);
+      }
+      if (item.max_delivery_days != null) {
+        entry.maxDays = Number(item.max_delivery_days);
+      }
+    }
+
+    return Array.from(byWilaya.values()).map((e) => new RateData({
+      provider: PROVIDERS.ZIMOU,
+      toWilayaId: e.wilayaId,
+      toWilayaName: e.wilayaName,
+      homeDeliveryPrice: mode(e.homePrices) ?? mode(e.flexPrices) ?? 0,
+      stopDeskPrice: mode(e.deskPrices) ?? 0,
+      deliveryType: DELIVERY_TYPE.HOME,
+      fromWilayaId,
+      estimatedDaysMin: e.minDays,
+      estimatedDaysMax: e.maxDays,
+    }));
+  }
+
+  /**
+   * List all wilayas. `GET /v3/helpers/wilayas` → { data: [{ id, name }] }
+   * @returns {Promise<Array<{id:number, name:string}>>}
+   */
+  async getWilayas() {
+    const raw = await this.get('v3/helpers/wilayas');
+    const rows = raw.data ?? raw;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((w) => ({ id: Number(w.id ?? 0), name: String(w.name ?? '') }));
+  }
+
+  /**
+   * List communes, optionally filtered to a wilaya.
+   * `GET /v3/helpers/communes` → { data: [{ id, name, wilaya_id, zip_code }] }
+   * @param {number|string|null} [wilayaId]
+   * @returns {Promise<Array<{id:number, name:string, wilayaId:number, zipCode:string|null}>>}
+   */
+  async getCommunes(wilayaId = null) {
+    const raw = await this.get('v3/helpers/communes');
+    const rows = raw.data ?? raw;
+    if (!Array.isArray(rows)) return [];
     return rows
-      .filter((item) => item && typeof item === 'object')
-      .map((item) => new RateData({
-        provider: PROVIDERS.ZIMOU,
-        toWilayaId: Number(item.wilaya_id ?? item.wilaya ?? 0),
-        toWilayaName: String(item.wilaya_name ?? item.wilaya ?? ''),
-        homeDeliveryPrice: Number(item.express_price ?? item.home_price ?? item.price ?? 0),
-        stopDeskPrice: Number(item.stopdesk_price ?? item.point_relais_price ?? item.price ?? 0),
-        deliveryType: DELIVERY_TYPE.HOME,
-        fromWilayaId,
+      .filter((c) => wilayaId == null || Number(c.wilaya_id) === Number(wilayaId))
+      .map((c) => ({
+        id: Number(c.id ?? 0),
+        name: String(c.name ?? ''),
+        wilayaId: Number(c.wilaya_id ?? 0),
+        zipCode: c.zip_code != null ? String(c.zip_code) : null,
+      }));
+  }
+
+  /**
+   * List stop-desk offices, optionally filtered by commune.
+   * `GET /v3/helpers/offices` →
+   *   { data: [{ id, name, delivery_price, partner_company_name, address, commune_id }] }
+   * @param {number|string|null} [communeId]
+   * @returns {Promise<Array<{id:number, name:string, communeId:number, address:string, partnerCompanyName:string, deliveryPrice:number|null}>>}
+   */
+  async getOffices(communeId = null) {
+    const raw = await this.get('v3/helpers/offices');
+    const rows = raw.data ?? raw;
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((o) => communeId == null || Number(o.commune_id) === Number(communeId))
+      .map((o) => ({
+        id: Number(o.id ?? 0),
+        name: String(o.name ?? ''),
+        communeId: Number(o.commune_id ?? 0),
+        address: String(o.address ?? ''),
+        partnerCompanyName: String(o.partner_company_name ?? ''),
+        deliveryPrice: o.delivery_price != null ? Number(o.delivery_price) : null,
       }));
   }
 
@@ -230,7 +350,14 @@ export class ZimouAdapter extends AbstractAdapter {
     if (data.phoneAlt != null) payload.client_phone2 = data.phoneAlt;
     if (cleanNotes != null) payload.observation = cleanNotes;
     if (data.weight != null) payload.weight = data.weight;
-    if (data.stopDeskId != null) payload.office_id = data.stopDeskId;
+    // Zimou office_id is a numeric helper id — send it as a number. For a
+    // stop-desk order the declared `commune` MUST be the office's commune (the
+    // caller sets toCommune to the office commune), otherwise Zimou rejects the
+    // office as "invalid for this store".
+    if (data.stopDeskId != null && data.stopDeskId !== '') {
+      const officeId = Number(data.stopDeskId);
+      payload.office_id = Number.isFinite(officeId) ? officeId : data.stopDeskId;
+    }
     if (data.hasExchange && data.exchangeProduct != null) {
       payload.returned_product = data.exchangeProduct;
     }
@@ -287,6 +414,34 @@ export class ZimouAdapter extends AbstractAdapter {
     }
 
     return this._hydrateOrderFromStatus(trackingNumber, data);
+  }
+
+  /**
+   * Bulk status lookup by tracking code(s). A single call to
+   * `GET /v3/packages/status?packages[]=t1&packages[]=t2` returns a map keyed by
+   * tracking code — ideal for periodic status polling without one request per
+   * order. Unknown/missing trackings are simply omitted from the result.
+   *
+   * @param {string[]} trackingNumbers
+   * @returns {Promise<OrderData[]>}
+   */
+  async getOrders(trackingNumbers) {
+    const list = (Array.isArray(trackingNumbers) ? trackingNumbers : [trackingNumbers]).map(String);
+    if (list.length === 0) return [];
+
+    const response = await this.get('v3/packages/status', { packages: list });
+    const map = (response?.data && typeof response.data === 'object' && !Array.isArray(response.data))
+      ? response.data
+      : response;
+
+    const out = [];
+    for (const tracking of list) {
+      const data = map?.[tracking];
+      if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+        out.push(this._hydrateOrderFromStatus(tracking, data));
+      }
+    }
+    return out;
   }
 
   async getLabel(trackingNumber) {

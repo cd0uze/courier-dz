@@ -1,10 +1,11 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { OrderData } from '../data/OrderData.js';
 import { RateData } from '../data/RateData.js';
 import { UnsupportedOperationError } from '../exceptions/UnsupportedOperationError.js';
+import { CourierError } from '../exceptions/CourierError.js';
 import { OrderNotFoundError } from '../exceptions/OrderNotFoundError.js';
 
 /** @type {Record<string, string>} */
@@ -37,7 +38,12 @@ const STATUS_MAP = {
 /**
  * Adapter for the Procolis API (also used by legacy ZR Express).
  *
- * Auth: id + token in request body / query params.
+ * Auth: token + key sent as HTTP headers on every request.
+ * Endpoints follow the ProcolisProviderIntegration reference:
+ *   - token (GET)      → testCredentials
+ *   - tarification (POST) → getRates
+ *   - add_colis (POST)  → createOrder
+ *   - lire (POST)       → getOrder
  */
 export class ProcolisAdapter extends AbstractAdapter {
   /**
@@ -50,9 +56,18 @@ export class ProcolisAdapter extends AbstractAdapter {
     super({
       baseUrl: getBaseUrl(PROVIDERS.PROCOLIS),
       httpClient,
+      rateLimits: getProviderRateLimits(provider),
     });
     this.providerEnum = provider;
     this.credentials = credentials;
+  }
+
+  /** Auth headers sent on every request */
+  _authHeaders() {
+    return {
+      token: this.credentials.token,
+      key: this.credentials.key,
+    };
   }
 
   normalizeStatus(rawStatus) {
@@ -61,31 +76,34 @@ export class ProcolisAdapter extends AbstractAdapter {
 
   async testCredentials() {
     try {
-      const response = await this.get('livraisons', this._authParams({ page: '1' }));
-      return response.livraisons != null || response.data != null || Array.isArray(response);
+      const response = await this.get('token', {}, this._authHeaders());
+      return response?.Statut === 'Accès activé';
     } catch {
       return false;
     }
   }
 
   async getRates(fromWilayaId = null, toWilayaId = null) {
-    const params = this._authParams();
-    if (toWilayaId != null) params.wilaya_id = String(toWilayaId);
-
-    const data = await this.get('tarifs', params);
-    const rows = data.tarifs ?? data.data ?? data;
+    const data = await this._request('POST', 'tarification', { headers: this._authHeaders() });
+    const rows = Array.isArray(data) ? data : (data.data ?? data.tarifs ?? []);
 
     if (!Array.isArray(rows)) return [];
 
-    return rows.map((item) => new RateData({
+    let result = rows.map((item) => new RateData({
       provider: this.providerEnum,
-      toWilayaId: Number(item.wilaya_id ?? 0),
-      toWilayaName: String(item.wilaya_name ?? ''),
-      homeDeliveryPrice: Number(item.tarif_domicile ?? item.tarif ?? 0),
-      stopDeskPrice: Number(item.tarif_bureau ?? item.tarif ?? 0),
+      toWilayaId: Number(item.IDWilaya ?? item.wilaya_id ?? 0),
+      toWilayaName: String(item.Wilaya ?? item.wilaya_name ?? ''),
+      homeDeliveryPrice: Number(item.Domicile ?? item.tarif_domicile ?? item.tarif ?? 0),
+      stopDeskPrice: Number(item.Stopdesk ?? item.tarif_bureau ?? item.tarif ?? 0),
       deliveryType: DELIVERY_TYPE.HOME,
       fromWilayaId,
     }));
+
+    if (toWilayaId != null) {
+      result = result.filter((r) => r.toWilayaId === Number(toWilayaId));
+    }
+
+    return result;
   }
 
   getCreateOrderValidationRules() {
@@ -106,11 +124,10 @@ export class ProcolisAdapter extends AbstractAdapter {
 
   async createOrder(data) {
     const payload = {
-      ...this._authParams(),
       Tracking: data.orderId,
-      TypeLivraison: data.deliveryType,
-      TypeColis: 0,
-      Confrimee: 0,
+      TypeLivraison: data.deliveryType === DELIVERY_TYPE.STOP_DESK ? 1 : 0,
+      TypeColis: data.hasExchange ? 1 : 0,
+      Confrimee: 1,
       Client: `${data.firstName} ${data.lastName}`,
       MobileA: data.phone,
       Adresse: data.address,
@@ -124,42 +141,66 @@ export class ProcolisAdapter extends AbstractAdapter {
     if (data.phoneAlt != null) payload.MobileB = data.phoneAlt;
     if (data.notes != null) payload.Note = data.notes;
 
-    const response = await this.post('livraisons', payload);
-    return this._hydrateOrder({ ...response, _input: data.toJSON() });
+    const response = await this.post(
+      'add_colis',
+      { Colis: [payload] },
+      this._authHeaders(),
+    );
+
+    const colis = response?.Colis?.[0];
+    if (!colis) {
+      throw new CourierError(
+        `Procolis createOrder returned an unexpected response: ${JSON.stringify(response)}`,
+      );
+    }
+
+    if (colis.MessageRetour === 'Double Tracking') {
+      throw new CourierError(
+        `Create Order failed (Duplicate Tracking): ${JSON.stringify(colis)}`,
+      );
+    }
+
+    if (colis.MessageRetour !== 'Good') {
+      throw new CourierError(
+        `Create Order failed (${colis.MessageRetour}): ${JSON.stringify(colis)}`,
+      );
+    }
+
+    return this._hydrateOrder(colis);
   }
 
   async getOrder(trackingNumber) {
-    const response = await this.get(`livraisons/${trackingNumber}`, this._authParams());
+    const response = await this.post(
+      'lire',
+      { Colis: [{ Tracking: trackingNumber }] },
+      this._authHeaders(),
+    );
 
-    if (!response || Object.keys(response).length === 0 || response.error) {
+    const colis = response?.Colis?.[0];
+    if (!colis || Object.keys(colis).length === 0) {
       throw new OrderNotFoundError(trackingNumber);
     }
 
-    return this._hydrateOrder(response);
+    return this._hydrateOrder(colis);
   }
 
   async getLabel(_trackingNumber) {
     throw new UnsupportedOperationError('getLabel', this.providerEnum);
   }
 
-  // ─── Private ──────────────────────────────────────────────────────────────
-
-  /**
-   * Build the auth params that Procolis requires on every request.
-   * @param {object} [extra]
-   * @returns {object}
-   */
-  _authParams(extra = {}) {
-    return { id: this.credentials.id, token: this.credentials.token, ...extra };
+  async cancelOrder(_trackingNumber) {
+    throw new UnsupportedOperationError('cancelOrder', this.providerEnum);
   }
+
+  // ─── Private ──────────────────────────────────────────────────────────────
 
   _hydrateOrder(raw) {
     const rawStatus = String(raw.Statut ?? raw.statut ?? raw.status ?? '');
-    const input = raw._input ?? {};
+    const tracking = String(raw.Tracking ?? '');
 
     return new OrderData({
-      orderId: String(raw.Tracking ?? raw.id_Externe ?? input.order_id ?? ''),
-      trackingNumber: String(raw.Tracking ?? ''),
+      orderId: tracking || String(raw.id_Externe ?? ''),
+      trackingNumber: tracking,
       provider: this.providerEnum,
       status: this.normalizeStatus(rawStatus),
       recipientName: String(raw.Client ?? ''),

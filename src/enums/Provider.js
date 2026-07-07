@@ -6,10 +6,12 @@
  * Providers using the same API engine are grouped in comments.
  */
 export const PROVIDERS = Object.freeze({
-  // ── Yalidine engine (2 providers) ─────────────────────────────────────────
+  // ── Yalidine engine (3 providers) ─────────────────────────────────────────
   YALIDINE: 'yalidine',
   /** Yalitec uses the identical Yalidine API engine with a different subdomain */
   YALITEC: 'yalitec',
+  /** Guepex uses the same Yalidine API engine */
+  GUEPEX: 'guepex',
 
   // ── Maystro (standalone engine) ────────────────────────────────────────────
   MAYSTRO: 'maystro',
@@ -23,6 +25,9 @@ export const PROVIDERS = Object.freeze({
 
   // ── Zimou Express (standalone router engine) ───────────────────────────────
   ZIMOU: 'zimou',
+
+  // ── Noest (standalone — app.noest-dz.com) ──────────────────────────────────
+  NOEST: 'noest',
 
   // ── Ecotrack engine — generic base + branded sub-providers ─────────────────
   ECOTRACK: 'ecotrack',
@@ -53,16 +58,32 @@ export const PROVIDERS = Object.freeze({
 
 // ─── Engine classification ────────────────────────────────────────────────────
 
-const YALIDINE_ENGINE_SET = new Set([PROVIDERS.YALIDINE, PROVIDERS.YALITEC]);
+const YALIDINE_ENGINE_SET = new Set([PROVIDERS.YALIDINE, PROVIDERS.YALITEC, PROVIDERS.GUEPEX]);
 
-const NON_ECOTRACK_SET = new Set([
-  PROVIDERS.YALIDINE,
-  PROVIDERS.YALITEC,
-  PROVIDERS.MAYSTRO,
-  PROVIDERS.PROCOLIS,
-  PROVIDERS.ZREXPRESS,
-  PROVIDERS.ZIMOU,
-  PROVIDERS.ZREXPRESS_NEW,
+const ECOTRACK_ENGINE_SET = new Set([
+  PROVIDERS.ECOTRACK,
+  PROVIDERS.ANDERSON,
+  PROVIDERS.AREEX,
+  PROVIDERS.BA_CONSULT,
+  PROVIDERS.CONEXLOG,
+  PROVIDERS.COYOTE_EXPRESS,
+  PROVIDERS.DHD,
+  PROVIDERS.DISTAZERO,
+  PROVIDERS.E48HR,
+  PROVIDERS.FRETDIRECT,
+  PROVIDERS.GOLIVRI,
+  PROVIDERS.MSM_GO,
+  PROVIDERS.PACKERS,
+  PROVIDERS.PREST,
+  PROVIDERS.RB_LIVRAISON,
+  PROVIDERS.REX_LIVRAISON,
+  PROVIDERS.ROCKET_DELIVERY,
+  PROVIDERS.SALVA_DELIVERY,
+  PROVIDERS.SPEED_DELIVERY,
+  PROVIDERS.TSL_EXPRESS,
+  PROVIDERS.WORLDEXPRESS,
+  PROVIDERS.SWIFT,
+  PROVIDERS.ALLOLIVRAISON,
 ]);
 
 export function isYalidineEngine(provider) {
@@ -70,11 +91,17 @@ export function isYalidineEngine(provider) {
 }
 
 export function isEcotrackEngine(provider) {
-  return !NON_ECOTRACK_SET.has(provider);
+  return ECOTRACK_ENGINE_SET.has(provider);
 }
 
+const PROCOLIS_ENGINE_SET = new Set([PROVIDERS.PROCOLIS, PROVIDERS.ZREXPRESS]);
+
 export function requiresApiId(provider) {
-  return provider === PROVIDERS.PROCOLIS || provider === PROVIDERS.ZREXPRESS;
+  return PROCOLIS_ENGINE_SET.has(provider);
+}
+
+export function isProcolisEngine(provider) {
+  return PROCOLIS_ENGINE_SET.has(provider);
 }
 
 // ─── Base URLs ────────────────────────────────────────────────────────────────
@@ -82,10 +109,12 @@ export function requiresApiId(provider) {
 export const PROVIDER_BASE_URLS = Object.freeze({
   [PROVIDERS.YALIDINE]: 'https://api.yalidine.app',
   [PROVIDERS.YALITEC]: 'https://api.yalitec.me',
+  [PROVIDERS.GUEPEX]: 'https://api.guepex.app',
   [PROVIDERS.MAYSTRO]: 'https://backend.maystro-delivery.com/api',
   [PROVIDERS.PROCOLIS]: 'https://procolis.com/api_v1',
   [PROVIDERS.ZREXPRESS]: 'https://procolis.com/api_v1',
   [PROVIDERS.ZIMOU]: 'https://zimou.express/api',
+  [PROVIDERS.NOEST]: 'https://app.noest-dz.com',
   [PROVIDERS.ZREXPRESS_NEW]: 'https://api.zrexpress.app',
   [PROVIDERS.ECOTRACK]: 'https://ecotrack.dz',
   [PROVIDERS.ANDERSON]: 'https://anderson-ecommerce.ecotrack.dz',       // updated API
@@ -118,6 +147,52 @@ export function getBaseUrl(provider) {
   return url;
 }
 
+// ─── Rate limits (per provider, as documented) ──────────────────────────────────
+// Mission "règle d'or": only providers whose docs state a limit get a specific one;
+// every other provider falls back to the 50 req/min floor.
+
+/** Conservative 45 req/min floor for providers with no documented rate limit. */
+const RATE_LIMIT_FLOOR = Object.freeze([{ max: 45, windowMs: 60_000 }]);
+
+/**
+ * Documented quota window(s) per provider engine. Verified live for Ecotrack,
+ * Yalidine (HTTP quota headers) and Noest during the Phase 0 audit.
+ *
+ * @param {string} provider - Provider ID (use PROVIDERS constant)
+ * @returns {Array<{max:number, windowMs:number}>}
+ */
+export function getProviderRateLimits(provider) {
+  // NOTE: every value below sits DELIBERATELY BELOW the provider's documented
+  // ceiling (≈10-20% headroom). Hitting a quota exactly at its boundary is what
+  // triggers sporadic 429s (and, repeated, risks an account suspension), so the
+  // preventive limiter aims under the line rather than at it.
+
+  // Ecotrack engine (generic + every branded sub-provider): doc 50/min → use 45/min.
+  if (isEcotrackEngine(provider)) {
+    return [{ max: 45, windowMs: 60_000 }];
+  }
+
+  // Yalidine engine (Yalidine / Yalitec / Guepex): doc 5/s + 50/min + 1000/h +
+  // 10000/day → use 4/s + 45/min + 900/h + 9000/day.
+  if (isYalidineEngine(provider)) {
+    return [
+      { max: 4, windowMs: 1_000 },
+      { max: 45, windowMs: 60_000 },
+      { max: 900, windowMs: 3_600_000 },
+      { max: 9_000, windowMs: 86_400_000 },
+    ];
+  }
+
+  // Noest: doc 60/min → use 45/min (Noest 429s aggressively at the boundary).
+  if (provider === PROVIDERS.NOEST) {
+    return [{ max: 45, windowMs: 60_000 }];
+  }
+
+  // Maystro, Procolis/ZR-legacy, ZR Express NEW, Zimou: no documented limit →
+  // conservative 45/min floor.
+  return RATE_LIMIT_FLOOR;
+}
+
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 export const PROVIDER_METADATA = Object.freeze({
@@ -137,6 +212,15 @@ export const PROVIDER_METADATA = Object.freeze({
     logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQUVdDFlv8cMVCTt6HT2IjG3cx9VlOMl9vqyLgr2CuN2w&s=10',
     apiDocs: 'https://yalitec.me/app/dev/docs/api/index.php',
     support: 'https://www.yalitec.com/fr#contact',
+    trackingUrl: null,
+  },
+  [PROVIDERS.GUEPEX]: {
+    name: 'Guepex', title: 'Guepex',
+    website: 'https://guepex.app/',
+    description: 'Guepex société de livraison en Algérie offre un service de livraison rapide et sécurisé.',
+    logo: 'https://guepex.app/app/assets/img/guepex-login-logo.jpg',
+    apiDocs: null,
+    support: 'https://guepex.app/',
     trackingUrl: null,
   },
   [PROVIDERS.MAYSTRO]: {
@@ -183,6 +267,15 @@ export const PROVIDER_METADATA = Object.freeze({
     apiDocs: 'https://zimou.express/api/docs',
     support: 'https://zimou.express',
     trackingUrl: 'https://zimou.express',
+  },
+  [PROVIDERS.NOEST]: {
+    name: 'Noest', title: 'NOEST Express',
+    website: 'https://noest-dz.com',
+    description: "NOEST Express est une société de livraison en Algérie (plateforme app.noest-dz.com).",
+    logo: 'https://app.noest-dz.com/css/customer/images/new_logo_.png',
+    apiDocs: 'https://app.noest-dz.com',
+    support: 'mailto:api@noest-dz.com',
+    trackingUrl: 'https://app.noest-dz.com/tracking/',
   },
   [PROVIDERS.ECOTRACK]: {
     name: 'Ecotrack', title: 'Ecotrack',
