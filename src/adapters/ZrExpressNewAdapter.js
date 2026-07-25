@@ -303,6 +303,7 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
    */
   async createOrder(data) {
     const payload = this._buildParcelPayload(data);
+    await this._applyReadyToDispatchState(payload);
 
     const response = await this.post('api/v1/parcels', payload);
     const parcelId = response.id ?? null;
@@ -313,6 +314,34 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
 
     // Two-step: fetch the full parcel resource after creation
     return this.getOrder(parcelId);
+  }
+
+  /**
+   * Without an explicit `stateId`, ZR creates the parcel in `OrderReceived`,
+   * a state the hub never picks up — the parcel silently goes nowhere
+   * (documented trap: "Il devra ensuite etre mis a jour en ReadyToDispatch
+   * pour que le hub l'accepte"). We resolve the `ReadyToDispatch` state id
+   * once via `workflows/search`, cache it, and stamp it on every parcel.
+   * If the lookup fails the parcel is still created (default state) so a
+   * transient workflows error never blocks dispatch.
+   */
+  async _applyReadyToDispatchState(payload) {
+    if (payload.stateId) return; // explicit override wins
+    if (this._readyStateId === undefined) {
+      try {
+        const res = await this.post('api/v1/workflows/search', { pageNumber: 1, pageSize: 100 });
+        const items = res?.items ?? res?.data ?? [];
+        const states = items.flatMap((w) => w?.states ?? w?.workflowStates ?? [w]);
+        const ready = states.find((st) => {
+          const name = String(st?.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
+          return name === 'readytodispatch';
+        });
+        this._readyStateId = ready?.id ?? null;
+      } catch {
+        this._readyStateId = null;
+      }
+    }
+    if (this._readyStateId) payload.stateId = this._readyStateId;
   }
 
   /**
@@ -424,6 +453,7 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
     for (let offset = 0; offset < list.length; offset += MAX_PER_REQUEST) {
       const chunk = list.slice(offset, offset + MAX_PER_REQUEST);
       const parcels = chunk.map((data) => this._buildParcelPayload(data));
+      for (const parcel of parcels) await this._applyReadyToDispatchState(parcel);
 
       const res = await this.post('api/v1/parcels/bulk', { parcels });
 
@@ -562,6 +592,55 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
       type: LABEL_TYPE.HTML_URL,
       url: fileUrl,
     });
+  }
+
+  // ─── Webhooks (supplier endpoints, paths from the Vargo integration) ──────
+
+  /**
+   * Register a webhook endpoint — ZR Express pushes shipment events to it.
+   * `POST api/v1/webhooks/endpoints` — { url, events? }.
+   *
+   * @param {string} url - Public HTTPS endpoint of your app
+   * @param {string[]|null} [events] - Optional event filter (e.g. ['shipment.delivered'])
+   * @returns {Promise<object>} raw ZR response (includes the endpoint id)
+   */
+  async createWebhook(url, events = null) {
+    const payload = { url };
+    if (Array.isArray(events) && events.length > 0) payload.events = events;
+    return this.post('api/v1/webhooks/endpoints', payload);
+  }
+
+  /** List registered webhook endpoints. */
+  async listWebhooks() {
+    const response = await this.get('api/v1/webhooks/endpoints');
+    const items = response?.data ?? response?.items ?? response;
+    return Array.isArray(items) ? items : [items].filter(Boolean);
+  }
+
+  /** Get one webhook endpoint by id. */
+  async getWebhook(endpointId) {
+    return this.get(`api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}`);
+  }
+
+  /** Update a webhook endpoint (e.g. change its URL or events). */
+  async updateWebhook(endpointId, fields) {
+    return this.put(`api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}`, fields);
+  }
+
+  /** Delete a webhook endpoint. */
+  async deleteWebhook(endpointId) {
+    await this.delete(`api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}`);
+    return true;
+  }
+
+  /** Signing secret for a webhook endpoint — verify incoming payloads with it. */
+  async getWebhookSecret(endpointId) {
+    return this.get(`api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/secret`);
+  }
+
+  /** Custom headers configured on a webhook endpoint. */
+  async getWebhookHeaders(endpointId) {
+    return this.get(`api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/headers`);
   }
 
   /**

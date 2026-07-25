@@ -1,4 +1,9 @@
-import { PROVIDERS, isYalidineEngine, isEcotrackEngine, getProviderMetadata, getAllProvidersMetadata } from './enums/Provider.js';
+import { PROVIDERS, isYalidineEngine, isEcotrackEngine, isProcolisEngine, getProviderMetadata, getAllProvidersMetadata } from './enums/Provider.js';
+import { ElogistiaAdapter } from './adapters/ElogistiaAdapter.js';
+import { NearDeliveryAdapter } from './adapters/NearDeliveryAdapter.js';
+import { EcomDeliveryAdapter } from './adapters/EcomDeliveryAdapter.js';
+import { MdmAdapter } from './adapters/MdmAdapter.js';
+import { NearDeliveryCredentials } from './data/credentials/NearDeliveryCredentials.js';
 import { EcotrackAdapter } from './adapters/EcotrackAdapter.js';
 import { YalidineAdapter } from './adapters/YalidineAdapter.js';
 import { MaystroAdapter } from './adapters/MaystroAdapter.js';
@@ -158,11 +163,40 @@ export class CourierManager {
       });
     }
 
-    // ── Procolis engine (Procolis + ZR Express legacy) ────────────────────
-    if (providerKey === PROVIDERS.PROCOLIS || providerKey === PROVIDERS.ZREXPRESS) {
+    // ── Procolis engine (Procolis, ZR legacy, ABEX, Leopard, Colilog, Flash) ─
+    if (isProcolisEngine(providerKey)) {
       return new ProcolisAdapter({
         credentials: this._buildProcolisCredentials(providerKey, creds),
         provider: providerKey,
+      });
+    }
+
+    // ── Elogistia ─────────────────────────────────────────────────────────
+    if (providerKey === PROVIDERS.ELOGISTIA) {
+      return new ElogistiaAdapter({
+        credentials: this._buildTokenCredentials(providerKey, creds),
+      });
+    }
+
+    // ── Near Delivery ─────────────────────────────────────────────────────
+    if (providerKey === PROVIDERS.NEAR_DELIVERY) {
+      return new NearDeliveryAdapter({
+        credentials: this._buildNearDeliveryCredentials(providerKey, creds),
+      });
+    }
+
+    // ── E-COM Delivery ────────────────────────────────────────────────────
+    if (providerKey === PROVIDERS.ECOM_DELIVERY) {
+      return new EcomDeliveryAdapter({
+        credentials: this._buildProcolisCredentials(providerKey, creds),
+      });
+    }
+
+    // ── MDM Express ───────────────────────────────────────────────────────
+    if (providerKey === PROVIDERS.MDM) {
+      return new MdmAdapter({
+        credentials: this._buildTokenCredentials(providerKey, creds),
+        storeId: creds?.store_id ?? creds?.storeId ?? null,
       });
     }
 
@@ -253,6 +287,14 @@ export class CourierManager {
   _buildNoestCredentials(providerKey, creds) {
     try {
       return NoestCredentials.fromObject(creds);
+    } catch (err) {
+      throw new InvalidCredentialsError(providerKey, err.message, err);
+    }
+  }
+
+  _buildNearDeliveryCredentials(providerKey, creds) {
+    try {
+      return NearDeliveryCredentials.fromObject(creds);
     } catch (err) {
       throw new InvalidCredentialsError(providerKey, err.message, err);
     }

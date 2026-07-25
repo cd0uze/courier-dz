@@ -19,7 +19,54 @@ import { OrderNotFoundError } from '../exceptions/OrderNotFoundError.js';
  *
  * @type {Record<string, string>}
  */
+// Official NOEST event keys (public API doc v2.3 «Liste des événements»).
+// ⚠️ NOEST mixes payment/finance events into the tracking feed — those map to
+// null below and MUST NOT be treated as parcel movement (documented trap).
+const FINANCE_EVENT_KEYS = new Set([
+  'verssement_admin_cust',
+  'verssement_admin_cust_canceled',
+  'verssement_hub_cust_canceled',
+  'validation_reception_cash_by_partener',
+  'edit_price',
+  'extra_fee',
+]);
+
 const STATUS_MAP = {
+  // ── Official event keys ────────────────────────────────────────────────────
+  customer_validation: TRACKING_STATUS.PENDING,
+  validation_collect_colis: TRACKING_STATUS.PICKED_UP,
+  validation_reception_admin: TRACKING_STATUS.IN_TRANSIT,
+  validation_reception: TRACKING_STATUS.IN_TRANSIT,
+  fdr_activated: TRACKING_STATUS.OUT_FOR_DELIVERY,
+  sent_to_redispatch: TRACKING_STATUS.IN_TRANSIT,
+  nouvel_tentative_asked_by_customer: TRACKING_STATUS.OUT_FOR_DELIVERY,
+  mise_a_jour: TRACKING_STATUS.FAILED_DELIVERY, // « Tentative de livraison »
+  colis_suspendu: TRACKING_STATUS.FAILED_DELIVERY,
+  livre: TRACKING_STATUS.DELIVERED,
+  livred: TRACKING_STATUS.DELIVERED,
+  return_asked_by_customer: TRACKING_STATUS.RETURNING,
+  return_asked_by_hub: TRACKING_STATUS.RETURNING,
+  retour_dispatched_to_partenaires: TRACKING_STATUS.RETURNING,
+  return_dispatched_to_partenaire: TRACKING_STATUS.RETURNING,
+  colis_retour_transmit_to_partner: TRACKING_STATUS.RETURNING,
+  return_dispatched_to_warehouse: TRACKING_STATUS.RETURNING,
+  annulation_dispatch_retour: TRACKING_STATUS.IN_TRANSIT,
+  cancel_return_dispatched_to_partenaire: TRACKING_STATUS.IN_TRANSIT,
+  livraison_echoue_recu: TRACKING_STATUS.RETURNED,
+  return_validated_by_partener: TRACKING_STATUS.RETURNED,
+  return_redispatched_to_livraison: TRACKING_STATUS.OUT_FOR_DELIVERY,
+  colis_pickup_transmit_to_partner: TRACKING_STATUS.IN_TRANSIT,
+  pickedup: TRACKING_STATUS.PICKED_UP,
+  valid_return_pickup: TRACKING_STATUS.PICKED_UP,
+  pickup_picked_recu: TRACKING_STATUS.DELIVERED,
+  echange_valide: TRACKING_STATUS.DELIVERED,
+  echange_valid_by_hub: TRACKING_STATUS.DELIVERED,
+  ask_to_delete_by_admin: TRACKING_STATUS.CANCELLED,
+  ask_to_delete_by_hub: TRACKING_STATUS.CANCELLED,
+  edited_informations: TRACKING_STATUS.UNKNOWN,
+  edit_wilaya: TRACKING_STATUS.UNKNOWN,
+
+  // ── Legacy / generic slugs ─────────────────────────────────────────────────
   upload: TRACKING_STATUS.PENDING,
   pending: TRACKING_STATUS.PENDING,
   preparation: TRACKING_STATUS.PENDING,
@@ -87,7 +134,21 @@ export class NoestAdapter extends AbstractAdapter {
   normalizeStatus(rawStatus) {
     if (!rawStatus) return TRACKING_STATUS.UNKNOWN;
     const key = String(rawStatus).toLowerCase().trim().replace(/\s+/g, '_');
+    // Finance events (payouts, price edits) travel in the same feed but are
+    // NOT parcel movement — never let them overwrite a delivery status.
+    if (FINANCE_EVENT_KEYS.has(key)) return TRACKING_STATUS.UNKNOWN;
     return STATUS_MAP[key] ?? TRACKING_STATUS.UNKNOWN;
+  }
+
+  /**
+   * True when a raw NOEST event key is a payment/finance event (payout,
+   * price edit, extra fee) rather than parcel movement. Callers rendering a
+   * tracking timeline can keep them; status engines must skip them.
+   * @param {string} rawStatus
+   */
+  isFinanceEvent(rawStatus) {
+    const key = String(rawStatus ?? '').toLowerCase().trim().replace(/\s+/g, '_');
+    return FINANCE_EVENT_KEYS.has(key);
   }
 
   async testCredentials() {
@@ -182,7 +243,8 @@ export class NoestAdapter extends AbstractAdapter {
     };
 
     if (data.phoneAlt != null) body.phone_2 = String(data.phoneAlt);
-    if (data.notes != null) body.remarque = String(data.notes);
+    const noestNotes = this.notesWithFragile(data);
+    if (noestNotes != null) body.remarque = String(noestNotes);
     if (data.hasExchange && data.exchangeProduct != null) {
       body.produit_a_recuperer = String(data.exchangeProduct);
     }
@@ -207,6 +269,23 @@ export class NoestAdapter extends AbstractAdapter {
     const response = await this.post('api/public/create/order', payload);
 
     if (response?.success === true && response?.tracking) {
+      // NOEST trap: a created order sits in a DRAFT state logistics never sees
+      // until it is validated — no pickup, no error, the parcel just stalls.
+      // We validate as part of creation so a returned tracking is pickup-ready.
+      // Set adapter.autoValidate = false to keep drafts (edit before shipping).
+      if (this.autoValidate !== false) {
+        try {
+          await this.shipOrder(response.tracking);
+        } catch (err) {
+          throw new CourierError(
+            `NOEST created parcel [${response.tracking}] but validation failed — ` +
+            `the parcel is a DRAFT and will NOT be picked up until validated ` +
+            `(shipOrder). Cause: ${err.message}`,
+            err?.statusCode ?? 0,
+            err,
+          );
+        }
+      }
       return this._hydrateFromCreate(response, data);
     }
 
@@ -251,6 +330,20 @@ export class NoestAdapter extends AbstractAdapter {
       for (const f of res?.failed ?? []) {
         aggregate.failed.push(f);
         aggregate.failureCount += 1;
+      }
+
+      // Same NOEST trap as createOrder: bulk-created parcels are drafts until
+      // validated. Validate the successful trackings of this chunk in one call.
+      if (this.autoValidate !== false) {
+        const trackings = (res?.passed ?? [])
+          .map((p) => p?.tracking)
+          .filter(Boolean);
+        if (trackings.length > 0) {
+          const validation = await this.bulkShipOrders(trackings);
+          aggregate.validation = aggregate.validation ?? { passed: {}, failed: {} };
+          Object.assign(aggregate.validation.passed, validation?.passed ?? {});
+          Object.assign(aggregate.validation.failed, validation?.failed ?? {});
+        }
       }
     }
 

@@ -54,11 +54,88 @@ export const PROVIDERS = Object.freeze({
   // ── New providers ──────────────────────────────────────────────────────────
   SWIFT: 'swift',
   ALLOLIVRAISON: 'allolivraison',
+
+  // ── Ecotrack clones (imported from the Vargo provider census) ──────────────
+  SAMEX: 'samex',
+  SBL_EXPRESS: 'sbl_express',
+  WEEWEE_DELIVERY: 'weewee_delivery',
+  JAGUAR_LIVRAISON: 'jaguar_livraison',
+  RJ360_EXPRESS: 'rj360_express',
+  EXPEDIA_CHRONO: 'expedia_chrono',
+  MARS_EXPRESS: 'mars_express',
+  LYNX: 'lynx',
+  ECO_RAPIDE_EXPRESS: 'eco_rapide_express',
+  NAVEX_DELIVERY: 'navex_delivery',
+  RM_EXPRESS: 'rm_express',
+  RIHAL_EXPRESS: 'rihal_express',
+  ATLAS_EXPRESS: 'atlas_express',
+  BOOGI: 'boogi',
+  CHRONOREX: 'chronorex',
+  CIRTA_EXPRESS: 'cirta_express',
+  COLIRELI: 'colireli',
+  COLIZONE: 'colizone',
+  GS_ECOMMERCE: 'gs_ecommerce',
+  JO_EXPRESS: 'jo_express',
+  OM_EXPRESS: 'om_express',
+  ON_TIME_EXPRESS: 'on_time_express',
+  PDEX: 'pdex',
+  QUICK_DELIVERY: 'quick_delivery',
+  RS_EXPRESS: 'rs_express',
+  RUTA_EXPRESS: 'ruta_express',
+  TAWSIL_STAR: 'tawsil_star',
+  UNIVER_DELIVERY: 'univer_delivery',
+  VITRANS: 'vitrans',
+  ARANEX: 'aranex',
+  BFK_EXPRESS: 'bfk_express',
+  HDD_EXPRESS: 'hdd_express',
+  MED_EXPRESS: 'med_express',
+  ALANIA_EXPRESS: 'alania_express',
+  CHAMPION_LOGISTICS: 'champion_logistics',
+  COLEX: 'colex',
+  DELIVRO_MAIL: 'delivro_mail',
+  ELGUIDE_DELIVERY: 'elguide_delivery',
+  FAST_HORSE_EXPRESS: 'fast_horse_express',
+  FZ_DELIVERY: 'fz_delivery',
+  IMIR_LOGISTICS: 'imir_logistics',
+  LIHLIH_EXPRESS: 'lihlih_express',
+  MAZAYA_LOGISTICS: 'mazaya_logistics',
+  OVRED: 'ovred',
+  SPEED_MAIL: 'speed_mail',
+  WIN_DELIVERY: 'win_delivery',
+  AMANA_SPEED: 'amana_speed',
+  ZINYA_TEC: 'zinya_tec',
+  SULTAN_COLIS_EXPRESS: 'sultan_colis_express',
+  MAJOR_EX: 'major_ex',
+  RED_EX: 'red_ex',
+
+  // ── Yalidine clones ─────────────────────────────────────────────────────────
+  ECONOMIQUA: 'economiqua',
+  EASY_AND_SPEED: 'easy_and_speed',
+  WECAN: 'wecan',
+
+  // ── Procolis clones (same procolis.com/api_v1 engine) ──────────────────────
+  ABEX: 'abex',
+  LEOPARD_EXPRESS: 'leopard_express',
+  COLILOG: 'colilog',
+  FLASH_DELIVERY: 'flash_delivery',
+
+  // ── Standalone engines ──────────────────────────────────────────────────────
+  ELOGISTIA: 'elogistia',
+  NEAR_DELIVERY: 'near_delivery',
+  ECOM_DELIVERY: 'ecom_delivery',
+  MDM: 'mdm',
 });
 
 // ─── Engine classification ────────────────────────────────────────────────────
 
-const YALIDINE_ENGINE_SET = new Set([PROVIDERS.YALIDINE, PROVIDERS.YALITEC, PROVIDERS.GUEPEX]);
+const YALIDINE_ENGINE_SET = new Set([
+  PROVIDERS.YALIDINE,
+  PROVIDERS.YALITEC,
+  PROVIDERS.GUEPEX,
+  PROVIDERS.ECONOMIQUA,
+  PROVIDERS.EASY_AND_SPEED,
+  PROVIDERS.WECAN,
+]);
 
 const ECOTRACK_ENGINE_SET = new Set([
   PROVIDERS.ECOTRACK,
@@ -84,6 +161,57 @@ const ECOTRACK_ENGINE_SET = new Set([
   PROVIDERS.WORLDEXPRESS,
   PROVIDERS.SWIFT,
   PROVIDERS.ALLOLIVRAISON,
+  PROVIDERS.SAMEX,
+  PROVIDERS.SBL_EXPRESS,
+  PROVIDERS.WEEWEE_DELIVERY,
+  PROVIDERS.JAGUAR_LIVRAISON,
+  PROVIDERS.RJ360_EXPRESS,
+  PROVIDERS.EXPEDIA_CHRONO,
+  PROVIDERS.MARS_EXPRESS,
+  PROVIDERS.LYNX,
+  PROVIDERS.ECO_RAPIDE_EXPRESS,
+  PROVIDERS.NAVEX_DELIVERY,
+  PROVIDERS.RM_EXPRESS,
+  PROVIDERS.RIHAL_EXPRESS,
+  PROVIDERS.ATLAS_EXPRESS,
+  PROVIDERS.BOOGI,
+  PROVIDERS.CHRONOREX,
+  PROVIDERS.CIRTA_EXPRESS,
+  PROVIDERS.COLIRELI,
+  PROVIDERS.COLIZONE,
+  PROVIDERS.GS_ECOMMERCE,
+  PROVIDERS.JO_EXPRESS,
+  PROVIDERS.OM_EXPRESS,
+  PROVIDERS.ON_TIME_EXPRESS,
+  PROVIDERS.PDEX,
+  PROVIDERS.QUICK_DELIVERY,
+  PROVIDERS.RS_EXPRESS,
+  PROVIDERS.RUTA_EXPRESS,
+  PROVIDERS.TAWSIL_STAR,
+  PROVIDERS.UNIVER_DELIVERY,
+  PROVIDERS.VITRANS,
+  PROVIDERS.ARANEX,
+  PROVIDERS.BFK_EXPRESS,
+  PROVIDERS.HDD_EXPRESS,
+  PROVIDERS.MED_EXPRESS,
+  PROVIDERS.ALANIA_EXPRESS,
+  PROVIDERS.CHAMPION_LOGISTICS,
+  PROVIDERS.COLEX,
+  PROVIDERS.DELIVRO_MAIL,
+  PROVIDERS.ELGUIDE_DELIVERY,
+  PROVIDERS.FAST_HORSE_EXPRESS,
+  PROVIDERS.FZ_DELIVERY,
+  PROVIDERS.IMIR_LOGISTICS,
+  PROVIDERS.LIHLIH_EXPRESS,
+  PROVIDERS.MAZAYA_LOGISTICS,
+  PROVIDERS.OVRED,
+  PROVIDERS.SPEED_MAIL,
+  PROVIDERS.WIN_DELIVERY,
+  PROVIDERS.AMANA_SPEED,
+  PROVIDERS.ZINYA_TEC,
+  PROVIDERS.SULTAN_COLIS_EXPRESS,
+  PROVIDERS.MAJOR_EX,
+  PROVIDERS.RED_EX,
 ]);
 
 export function isYalidineEngine(provider) {
@@ -94,7 +222,14 @@ export function isEcotrackEngine(provider) {
   return ECOTRACK_ENGINE_SET.has(provider);
 }
 
-const PROCOLIS_ENGINE_SET = new Set([PROVIDERS.PROCOLIS, PROVIDERS.ZREXPRESS]);
+const PROCOLIS_ENGINE_SET = new Set([
+  PROVIDERS.PROCOLIS,
+  PROVIDERS.ZREXPRESS,
+  PROVIDERS.ABEX,
+  PROVIDERS.LEOPARD_EXPRESS,
+  PROVIDERS.COLILOG,
+  PROVIDERS.FLASH_DELIVERY,
+]);
 
 export function requiresApiId(provider) {
   return PROCOLIS_ENGINE_SET.has(provider);
@@ -102,6 +237,63 @@ export function requiresApiId(provider) {
 
 export function isProcolisEngine(provider) {
   return PROCOLIS_ENGINE_SET.has(provider);
+}
+
+// ─── Feature capabilities ─────────────────────────────────────────────────────
+
+/**
+ * Providers with a NATIVE free-shipping flag on order creation
+ * (the delivery fee is waived at the courier level).
+ * For any other provider the caller must adjust the COD amount itself
+ * (e.g. don't add the delivery fee to `price`).
+ * @param {string} provider
+ * @returns {boolean}
+ */
+export function supportsFreeShipping(provider) {
+  return isYalidineEngine(provider) // `freeshipping` boolean
+    || provider === PROVIDERS.ZIMOU // `free_delivery`
+    || provider === PROVIDERS.MDM;  // `freeShipping`
+}
+
+/**
+ * Providers with a NATIVE fragile flag on order creation.
+ * For the other engines with a note field (Noest, Procolis engine,
+ * Elogistia, E-COM Delivery) the adapter automatically prefixes the note
+ * with "FRAGILE" when CreateOrderData.fragile is true.
+ * @param {string} provider
+ * @returns {boolean}
+ */
+export function supportsFragile(provider) {
+  return isEcotrackEngine(provider) // `fragile` 0/1
+    || provider === PROVIDERS.MDM;  // `fragile`
+}
+
+/**
+ * Providers exposing a native bulk-delete API.
+ * @param {string} provider
+ * @returns {boolean}
+ */
+export function supportsBulkDelete(provider) {
+  return isYalidineEngine(provider)              // bulkDeleteOrders()
+    || provider === PROVIDERS.ZREXPRESS_NEW      // bulkDeleteByIds()/bulkDeleteByTracking()
+    || provider === PROVIDERS.ECOM_DELIVERY;     // bulkDeleteOrders()
+}
+
+/**
+ * Providers exposing a native bulk-create API (one HTTP call, many parcels).
+ * @param {string} provider
+ * @returns {boolean}
+ */
+export function supportsBulkCreate(provider) {
+  return isYalidineEngine(provider)
+    || isEcotrackEngine(provider)
+    || isProcolisEngine(provider)
+    || provider === PROVIDERS.MAYSTRO
+    || provider === PROVIDERS.NOEST
+    || provider === PROVIDERS.ZREXPRESS_NEW
+    || provider === PROVIDERS.NEAR_DELIVERY
+    || provider === PROVIDERS.ECOM_DELIVERY
+    || provider === PROVIDERS.MDM;
 }
 
 // ─── Base URLs ────────────────────────────────────────────────────────────────
@@ -122,7 +314,7 @@ export const PROVIDER_BASE_URLS = Object.freeze({
   [PROVIDERS.BA_CONSULT]: 'https://bacexpress.ecotrack.dz',
   [PROVIDERS.CONEXLOG]: 'https://app.conexlog-dz.com',
   [PROVIDERS.COYOTE_EXPRESS]: 'https://coyoteexpressdz.ecotrack.dz',
-  [PROVIDERS.DHD]: 'https://dhd.ecotrack.dz',
+  [PROVIDERS.DHD]: 'https://platform.dhd-dz.com', // dhd.ecotrack.dz émet un 301 vers ce domaine (un POST 301 devient GET)
   [PROVIDERS.DISTAZERO]: 'https://distazero.ecotrack.dz',
   [PROVIDERS.E48HR]: 'https://48hr.ecotrack.dz',
   [PROVIDERS.FRETDIRECT]: 'https://fret.ecotrack.dz',
@@ -139,6 +331,76 @@ export const PROVIDER_BASE_URLS = Object.freeze({
   [PROVIDERS.WORLDEXPRESS]: 'https://world-express.ecotrack.dz',        // updated API
   [PROVIDERS.SWIFT]: 'https://swift.ecotrack.dz',                       // new provider
   [PROVIDERS.ALLOLIVRAISON]: 'https://allolivraison.ecotrack.dz',       // new provider
+
+  // ── Ecotrack clones (base URLs from the Vargo provider census) ─────────────
+  [PROVIDERS.SAMEX]: 'https://samex.ecotrack.dz',
+  [PROVIDERS.SBL_EXPRESS]: 'https://sbl.ecotrack.dz',
+  [PROVIDERS.WEEWEE_DELIVERY]: 'https://weeweedelivery.ecotrack.dz',
+  [PROVIDERS.JAGUAR_LIVRAISON]: 'https://jaguar.ecotrack.dz',
+  [PROVIDERS.RJ360_EXPRESS]: 'https://rj360express.ecotrack.dz',
+  [PROVIDERS.EXPEDIA_CHRONO]: 'https://expediachrono.ecotrack.dz',
+  [PROVIDERS.MARS_EXPRESS]: 'https://marsexpress.ecotrack.dz',
+  [PROVIDERS.LYNX]: 'https://lynx.ecotrack.dz',
+  [PROVIDERS.ECO_RAPIDE_EXPRESS]: 'https://ecorapide-express.ecotrack.dz',
+  [PROVIDERS.NAVEX_DELIVERY]: 'https://navexdelivery.ecotrack.dz',
+  [PROVIDERS.RM_EXPRESS]: 'https://rmexpress.ecotrack.dz',
+  [PROVIDERS.RIHAL_EXPRESS]: 'https://rihalexpress.ecotrack.dz',
+  [PROVIDERS.ATLAS_EXPRESS]: 'https://atlaexpress.ecotrack.dz',
+  [PROVIDERS.BOOGI]: 'https://boogi.ecotrack.dz',
+  [PROVIDERS.CHRONOREX]: 'https://chronorex.ecotrack.dz',
+  [PROVIDERS.CIRTA_EXPRESS]: 'https://cirtaexpress.ecotrack.dz',
+  [PROVIDERS.COLIRELI]: 'https://colireli.ecotrack.dz',
+  [PROVIDERS.COLIZONE]: 'https://colizone.ecotrack.dz',
+  [PROVIDERS.GS_ECOMMERCE]: 'https://gsecommerce.ecotrack.dz',
+  [PROVIDERS.JO_EXPRESS]: 'https://joexpress.ecotrack.dz',
+  [PROVIDERS.OM_EXPRESS]: 'https://omexpress.ecotrack.dz',
+  [PROVIDERS.ON_TIME_EXPRESS]: 'https://ontime.ecotrack.dz',
+  [PROVIDERS.PDEX]: 'https://pdex.ecotrack.dz',
+  [PROVIDERS.QUICK_DELIVERY]: 'https://quickdelivery.ecotrack.dz',
+  [PROVIDERS.RS_EXPRESS]: 'https://rsexpress.ecotrack.dz',
+  [PROVIDERS.RUTA_EXPRESS]: 'https://rutaexpress.ecotrack.dz',
+  [PROVIDERS.TAWSIL_STAR]: 'https://tawsil.ecotrack.dz',
+  [PROVIDERS.UNIVER_DELIVERY]: 'https://univerdelivery.ecotrack.dz',
+  [PROVIDERS.VITRANS]: 'https://vitrans.ecotrack.dz',
+  [PROVIDERS.ARANEX]: 'https://aranex.ecotrack.dz',
+  [PROVIDERS.BFK_EXPRESS]: 'https://bfkexpress.ecotrack.dz',
+  [PROVIDERS.HDD_EXPRESS]: 'https://hhdexpress.ecotrack.dz',
+  [PROVIDERS.MED_EXPRESS]: 'https://medexpress.ecotrack.dz',
+  [PROVIDERS.ALANIA_EXPRESS]: 'https://alania.ecotrack.dz',
+  [PROVIDERS.CHAMPION_LOGISTICS]: 'https://champion.ecotrack.dz',
+  [PROVIDERS.COLEX]: 'https://colex.ecotrack.dz',
+  [PROVIDERS.DELIVRO_MAIL]: 'https://delivromail.ecotrack.dz',
+  [PROVIDERS.ELGUIDE_DELIVERY]: 'https://elguidedelivery.ecotrack.dz',
+  [PROVIDERS.FAST_HORSE_EXPRESS]: 'https://fasthorse.ecotrack.dz',
+  [PROVIDERS.FZ_DELIVERY]: 'https://fzdelivery.ecotrack.dz',
+  [PROVIDERS.IMIR_LOGISTICS]: 'https://imir.ecotrack.dz',
+  [PROVIDERS.LIHLIH_EXPRESS]: 'https://lihlihexpress.ecotrack.dz',
+  [PROVIDERS.MAZAYA_LOGISTICS]: 'https://mazaya.ecotrack.dz',
+  [PROVIDERS.OVRED]: 'https://ovred.ecotrack.dz',
+  [PROVIDERS.SPEED_MAIL]: 'https://speedmail.ecotrack.dz',
+  [PROVIDERS.WIN_DELIVERY]: 'https://windelivery.ecotrack.dz',
+  [PROVIDERS.AMANA_SPEED]: 'https://amana.ecotrack.dz',
+  [PROVIDERS.ZINYA_TEC]: 'https://zinyatec.ecotrack.dz',
+  [PROVIDERS.SULTAN_COLIS_EXPRESS]: 'https://sultancolisexpress.ecotrack.dz',
+  [PROVIDERS.MAJOR_EX]: 'https://majorex.ecotrack.dz',
+  [PROVIDERS.RED_EX]: 'https://redex.ecotrack.dz',
+
+  // ── Yalidine clones ─────────────────────────────────────────────────────────
+  [PROVIDERS.ECONOMIQUA]: 'https://api.economiqua.app',
+  [PROVIDERS.EASY_AND_SPEED]: 'https://api.easyandspeed.app',
+  [PROVIDERS.WECAN]: 'https://api.wecanservices.me',
+
+  // ── Procolis clones (same procolis.com/api_v1 engine) ──────────────────────
+  [PROVIDERS.ABEX]: 'https://procolis.com/api_v1',
+  [PROVIDERS.LEOPARD_EXPRESS]: 'https://procolis.com/api_v1',
+  [PROVIDERS.COLILOG]: 'https://procolis.com/api_v1',
+  [PROVIDERS.FLASH_DELIVERY]: 'https://procolis.com/api_v1',
+
+  // ── Standalone engines ──────────────────────────────────────────────────────
+  [PROVIDERS.ELOGISTIA]: 'https://api.elogistia.com',
+  [PROVIDERS.NEAR_DELIVERY]: 'https://api.neardelivery.app/api/v1',
+  [PROVIDERS.ECOM_DELIVERY]: 'https://ecom-dz.net',
+  [PROVIDERS.MDM]: 'https://api.mdm.express',
 });
 
 export function getBaseUrl(provider) {
@@ -194,6 +456,82 @@ export function getProviderRateLimits(provider) {
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
+
+/**
+ * Build metadata for an Ecotrack-engine clone from its base URL + title.
+ * All clones share the Ecotrack tracking page and API surface.
+ */
+function ecotrackCloneMeta(providerId, name, title) {
+  const website = `${PROVIDER_BASE_URLS[providerId]}/`;
+  return {
+    name, title,
+    website,
+    description: `${title} est une entreprise algérienne opérant dans le secteur de livraison express (plateforme Ecotrack).`,
+    logo: null,
+    apiDocs: website,
+    support: website,
+    trackingUrl: 'https://suivi.ecotrack.dz/suivi/',
+  };
+}
+
+/** [providerId, machineName, displayTitle] for every Ecotrack clone added from the Vargo census. */
+const ECOTRACK_CLONE_TITLES = [
+  [PROVIDERS.SAMEX, 'Samex', 'Samex'],
+  [PROVIDERS.SBL_EXPRESS, 'SblExpress', 'SBL Express'],
+  [PROVIDERS.WEEWEE_DELIVERY, 'WeeWeeDelivery', 'Wee Wee Delivery'],
+  [PROVIDERS.JAGUAR_LIVRAISON, 'JaguarLivraison', 'Jaguar Livraison'],
+  [PROVIDERS.RJ360_EXPRESS, 'Rj360Express', 'RJ 360 Express'],
+  [PROVIDERS.EXPEDIA_CHRONO, 'ExpediaChrono', 'Expedia Chrono'],
+  [PROVIDERS.MARS_EXPRESS, 'MarsExpress', 'Mars Express'],
+  [PROVIDERS.LYNX, 'Lynx', 'Lynx Express'],
+  [PROVIDERS.ECO_RAPIDE_EXPRESS, 'EcoRapideExpress', 'Eco Rapide Express'],
+  [PROVIDERS.NAVEX_DELIVERY, 'NavexDelivery', 'Navex Delivery'],
+  [PROVIDERS.RM_EXPRESS, 'RmExpress', 'RM Express'],
+  [PROVIDERS.RIHAL_EXPRESS, 'RihalExpress', 'Rihal Express'],
+  [PROVIDERS.ATLAS_EXPRESS, 'AtlasExpress', 'Atlas Express'],
+  [PROVIDERS.BOOGI, 'Boogi', 'Boogi Technologie'],
+  [PROVIDERS.CHRONOREX, 'Chronorex', 'Chronorex Express'],
+  [PROVIDERS.CIRTA_EXPRESS, 'CirtaExpress', 'Cirta Express'],
+  [PROVIDERS.COLIRELI, 'Colireli', 'ColiReli'],
+  [PROVIDERS.COLIZONE, 'Colizone', 'Colizone'],
+  [PROVIDERS.GS_ECOMMERCE, 'GsEcommerce', 'GS Ecommerce'],
+  [PROVIDERS.JO_EXPRESS, 'JoExpress', 'Jo Express'],
+  [PROVIDERS.OM_EXPRESS, 'OmExpress', 'Om Courrier Express'],
+  [PROVIDERS.ON_TIME_EXPRESS, 'OnTimeExpress', 'On Time Express'],
+  [PROVIDERS.PDEX, 'Pdex', 'PDEX — Package Delivery Express'],
+  [PROVIDERS.QUICK_DELIVERY, 'QuickDelivery', 'Quick Delivery DZ'],
+  [PROVIDERS.RS_EXPRESS, 'RsExpress', 'RS Express'],
+  [PROVIDERS.RUTA_EXPRESS, 'RutaExpress', 'Ruta Express'],
+  [PROVIDERS.TAWSIL_STAR, 'TawsilStar', 'Tawsil Star'],
+  [PROVIDERS.UNIVER_DELIVERY, 'UniverDelivery', 'Univer Delivery'],
+  [PROVIDERS.VITRANS, 'Vitrans', 'Vitrans'],
+  [PROVIDERS.ARANEX, 'Aranex', 'Aranex'],
+  [PROVIDERS.BFK_EXPRESS, 'BfkExpress', 'BFK Express'],
+  [PROVIDERS.HDD_EXPRESS, 'HddExpress', 'HDD Express'],
+  [PROVIDERS.MED_EXPRESS, 'MedExpress', 'Med Express'],
+  [PROVIDERS.ALANIA_EXPRESS, 'AlaniaExpress', 'Alania Express'],
+  [PROVIDERS.CHAMPION_LOGISTICS, 'ChampionLogistics', 'Champion Logistics'],
+  [PROVIDERS.COLEX, 'Colex', 'Colex'],
+  [PROVIDERS.DELIVRO_MAIL, 'DelivroMail', 'Delivro Mail'],
+  [PROVIDERS.ELGUIDE_DELIVERY, 'ElguideDelivery', 'El Guide Delivery'],
+  [PROVIDERS.FAST_HORSE_EXPRESS, 'FastHorseExpress', 'Fast Horse Express'],
+  [PROVIDERS.FZ_DELIVERY, 'FzDelivery', 'FZ Delivery'],
+  [PROVIDERS.IMIR_LOGISTICS, 'ImirLogistics', 'Imir Logistics'],
+  [PROVIDERS.LIHLIH_EXPRESS, 'LihLihExpress', 'LIH LIH Express'],
+  [PROVIDERS.MAZAYA_LOGISTICS, 'MazayaLogistics', 'Mazaya Logistics'],
+  [PROVIDERS.OVRED, 'Ovred', 'Ovred'],
+  [PROVIDERS.SPEED_MAIL, 'SpeedMail', 'Speed Mail'],
+  [PROVIDERS.WIN_DELIVERY, 'WinDelivery', 'Win Delivery'],
+  [PROVIDERS.AMANA_SPEED, 'AmanaSpeed', 'AMANA Speed'],
+  [PROVIDERS.ZINYA_TEC, 'ZinyaTec', 'Zinya Tec'],
+  [PROVIDERS.SULTAN_COLIS_EXPRESS, 'SultanColisExpress', 'Sultan Colis Express'],
+  [PROVIDERS.MAJOR_EX, 'MajorEx', 'Major Express'],
+  [PROVIDERS.RED_EX, 'RedEx', 'Red Ex'],
+];
+
+const ECOTRACK_CLONE_METADATA = Object.fromEntries(
+  ECOTRACK_CLONE_TITLES.map(([id, name, title]) => [id, ecotrackCloneMeta(id, name, title)]),
+);
 
 export const PROVIDER_METADATA = Object.freeze({
   [PROVIDERS.YALIDINE]: {
@@ -483,6 +821,114 @@ export const PROVIDER_METADATA = Object.freeze({
     apiDocs: 'https://allolivraison.ecotrack.dz/',
     support: 'https://allolivraison.ecotrack.dz/',
     trackingUrl: 'https://suivi.ecotrack.dz/suivi/',
+  },
+
+  // ── Ecotrack clones (generated) ─────────────────────────────────────────────
+  ...ECOTRACK_CLONE_METADATA,
+
+  // ── Yalidine clones ─────────────────────────────────────────────────────────
+  [PROVIDERS.ECONOMIQUA]: {
+    name: 'Economiqua', title: 'Economiqua',
+    website: 'https://economiqua.app/',
+    description: 'Economiqua société de livraison en Algérie (plateforme Yalidine).',
+    logo: null,
+    apiDocs: 'https://economiqua.app/app/dev/docs/api/index.php',
+    support: 'https://economiqua.app/',
+    trackingUrl: null,
+  },
+  [PROVIDERS.EASY_AND_SPEED]: {
+    name: 'EasyAndSpeed', title: 'Easy and Speed',
+    website: 'https://easyandspeed.app/',
+    description: 'Easy and Speed société de livraison en Algérie (plateforme Yalidine).',
+    logo: null,
+    apiDocs: 'https://easyandspeed.app/app/dev/docs/api/index.php',
+    support: 'https://easyandspeed.app/',
+    trackingUrl: null,
+  },
+  [PROVIDERS.WECAN]: {
+    name: 'WeCanServices', title: 'We Can Services',
+    website: 'https://wecanservices.me/',
+    description: 'We Can Services société de livraison en Algérie (plateforme Yalidine).',
+    logo: null,
+    apiDocs: 'https://wecanservices.me/',
+    support: 'https://wecanservices.me/',
+    trackingUrl: null,
+  },
+
+  // ── Procolis clones ─────────────────────────────────────────────────────────
+  [PROVIDERS.ABEX]: {
+    name: 'Abex', title: 'ABEX Express',
+    website: 'https://procolis.com',
+    description: 'ABEX Express, société de livraison en Algérie opérée via la plateforme Procolis.',
+    logo: null,
+    apiDocs: 'https://procolis.com',
+    support: 'https://procolis.com',
+    trackingUrl: null,
+  },
+  [PROVIDERS.LEOPARD_EXPRESS]: {
+    name: 'LeopardExpress', title: 'Leopard Express',
+    website: 'https://procolis.com',
+    description: 'Leopard Express, société de livraison en Algérie opérée via la plateforme Procolis.',
+    logo: null,
+    apiDocs: 'https://procolis.com',
+    support: 'https://procolis.com',
+    trackingUrl: null,
+  },
+  [PROVIDERS.COLILOG]: {
+    name: 'ColilogExpress', title: 'Colilog Express',
+    website: 'https://procolis.com',
+    description: 'Colilog Express, société de livraison en Algérie opérée via la plateforme Procolis.',
+    logo: null,
+    apiDocs: 'https://procolis.com',
+    support: 'https://procolis.com',
+    trackingUrl: null,
+  },
+  [PROVIDERS.FLASH_DELIVERY]: {
+    name: 'FlashDelivery', title: 'Flash Delivery',
+    website: 'https://procolis.com',
+    description: 'Flash Delivery, société de livraison en Algérie opérée via la plateforme Procolis.',
+    logo: null,
+    apiDocs: 'https://procolis.com',
+    support: 'https://procolis.com',
+    trackingUrl: null,
+  },
+
+  // ── Standalone engines ──────────────────────────────────────────────────────
+  [PROVIDERS.ELOGISTIA]: {
+    name: 'Elogistia', title: 'Elogistia',
+    website: 'https://elogistia.com/',
+    description: 'Elogistia est une société de livraison en Algérie avec sa propre API (api.elogistia.com).',
+    logo: null,
+    apiDocs: 'https://api.elogistia.com',
+    support: 'https://elogistia.com/',
+    trackingUrl: null,
+  },
+  [PROVIDERS.NEAR_DELIVERY]: {
+    name: 'NearDelivery', title: 'Near Delivery',
+    website: 'https://neardelivery.app/',
+    description: 'Near Delivery est une société de livraison en Algérie basée sur un réseau de buralistes (points relais).',
+    logo: null,
+    apiDocs: 'https://api.neardelivery.app',
+    support: 'https://neardelivery.app/',
+    trackingUrl: null,
+  },
+  [PROVIDERS.ECOM_DELIVERY]: {
+    name: 'EcomDelivery', title: 'E-COM Delivery',
+    website: 'https://ecom-dz.net/',
+    description: 'E-COM Delivery est une société de livraison en Algérie (API Api_v1 style Procolis sur ecom-dz.net).',
+    logo: null,
+    apiDocs: 'https://ecom-dz.net/',
+    support: 'https://ecom-dz.net/',
+    trackingUrl: null,
+  },
+  [PROVIDERS.MDM]: {
+    name: 'MdmExpress', title: 'MDM Express',
+    website: 'https://mdm.express/',
+    description: 'MDM Express est une plateforme e-commerce et de livraison en Algérie (api.mdm.express).',
+    logo: null,
+    apiDocs: 'https://api.mdm.express',
+    support: 'https://mdm.express/',
+    trackingUrl: null,
   },
 });
 

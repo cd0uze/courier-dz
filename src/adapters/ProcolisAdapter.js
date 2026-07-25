@@ -8,8 +8,43 @@ import { UnsupportedOperationError } from '../exceptions/UnsupportedOperationErr
 import { CourierError } from '../exceptions/CourierError.js';
 import { OrderNotFoundError } from '../exceptions/OrderNotFoundError.js';
 
-/** @type {Record<string, string>} */
+/**
+ * Procolis raw statuses → canonical TRACKING_STATUS.
+ * Full 28-status dictionary confirmed by the Vargo ProcolisPackagesStatus
+ * enum, merged with the legacy free-form labels already handled before.
+ * @type {Record<string, string>}
+ */
 const STATUS_MAP = {
+  // Documented Procolis statuses (Vargo census)
+  'en preparation': TRACKING_STATUS.PENDING,
+  'en traitement - prêt à expédie': TRACKING_STATUS.PENDING,
+  'dispatcher': TRACKING_STATUS.IN_TRANSIT,
+  'en livraison': TRACKING_STATUS.OUT_FOR_DELIVERY,
+  'en livraison ( 1528 )': TRACKING_STATUS.OUT_FOR_DELIVERY,
+  'au bureau': TRACKING_STATUS.READY_FOR_PICKUP,
+  'reporté': TRACKING_STATUS.FAILED_DELIVERY,
+  'a relancé': TRACKING_STATUS.FAILED_DELIVERY,
+  'échange': TRACKING_STATUS.IN_TRANSIT,
+  'appel sans réponse 1': TRACKING_STATUS.FAILED_DELIVERY,
+  'appel sans réponse 2': TRACKING_STATUS.FAILED_DELIVERY,
+  'appel sans réponse 3': TRACKING_STATUS.FAILED_DELIVERY,
+  'sd - appel sans réponse 1': TRACKING_STATUS.FAILED_DELIVERY,
+  'sd - appel sans réponse 2': TRACKING_STATUS.FAILED_DELIVERY,
+  'sd - appel sans réponse 3': TRACKING_STATUS.FAILED_DELIVERY,
+  'sd - en attente du client': TRACKING_STATUS.READY_FOR_PICKUP,
+  'sd - reporté': TRACKING_STATUS.FAILED_DELIVERY,
+  'colis livrée': TRACKING_STATUS.DELIVERED,
+  'livrée': TRACKING_STATUS.DELIVERED,
+  'livrée [ encaisser ]': TRACKING_STATUS.DELIVERED,
+  'annuler par le client': TRACKING_STATUS.CANCELLED,
+  'sd - annuler par le client': TRACKING_STATUS.CANCELLED,
+  'sd - annuler 3x': TRACKING_STATUS.CANCELLED,
+  'retour de dispatche': TRACKING_STATUS.RETURNING,
+  'retour livreur': TRACKING_STATUS.RETURNING,
+  'retour navette': TRACKING_STATUS.RETURNING,
+  'retour stock': TRACKING_STATUS.RETURNED,
+
+  // Legacy free-form labels (kept for backward compatibility)
   'en attente': TRACKING_STATUS.PENDING,
   'préparation': TRACKING_STATUS.PENDING,
   'en préparation': TRACKING_STATUS.PENDING,
@@ -71,7 +106,7 @@ export class ProcolisAdapter extends AbstractAdapter {
   }
 
   normalizeStatus(rawStatus) {
-    return STATUS_MAP[rawStatus.toLowerCase().trim()] ?? TRACKING_STATUS.UNKNOWN;
+    return STATUS_MAP[String(rawStatus ?? '').toLowerCase().trim()] ?? TRACKING_STATUS.UNKNOWN;
   }
 
   async testCredentials() {
@@ -122,7 +157,7 @@ export class ProcolisAdapter extends AbstractAdapter {
     };
   }
 
-  async createOrder(data) {
+  _buildParcel(data) {
     const payload = {
       Tracking: data.orderId,
       TypeLivraison: data.deliveryType === DELIVERY_TYPE.STOP_DESK ? 1 : 0,
@@ -137,13 +172,16 @@ export class ProcolisAdapter extends AbstractAdapter {
       TProduit: data.productDescription,
       id_Externe: data.orderId,
     };
-
     if (data.phoneAlt != null) payload.MobileB = data.phoneAlt;
-    if (data.notes != null) payload.Note = data.notes;
+    const note = this.notesWithFragile(data);
+    if (note != null) payload.Note = note;
+    return payload;
+  }
 
+  async createOrder(data) {
     const response = await this.post(
       'add_colis',
-      { Colis: [payload] },
+      { Colis: [this._buildParcel(data)] },
       this._authHeaders(),
     );
 
@@ -182,6 +220,73 @@ export class ProcolisAdapter extends AbstractAdapter {
     }
 
     return this._hydrateOrder(colis);
+  }
+
+  /**
+   * Native bulk create — Procolis accepts several parcels in one
+   * `POST add_colis` call. Returns one result per parcel.
+   *
+   * @param {Array<import('../data/CreateOrderData.js').CreateOrderData>} dataArray
+   * @returns {Promise<Array<{orderId:string, success:boolean, tracking:(string|null), message:(string|null), order:(OrderData|null)}>>}
+   */
+  async bulkCreateOrders(dataArray) {
+    const list = Array.isArray(dataArray) ? dataArray : [dataArray];
+    const response = await this.post(
+      'add_colis',
+      { Colis: list.map((d) => this._buildParcel(d)) },
+      this._authHeaders(),
+    );
+    const results = Array.isArray(response?.Colis) ? response.Colis : [];
+    return list.map((data, i) => {
+      const colis = results[i] ?? null;
+      const success = colis?.MessageRetour === 'Good';
+      return {
+        orderId: data.orderId,
+        success,
+        tracking: success ? String(colis.Tracking ?? data.orderId) : null,
+        message: colis?.MessageRetour ?? 'No response entry',
+        order: success ? this._hydrateOrder(colis) : null,
+      };
+    });
+  }
+
+  /** Batch read: one `POST lire` call with several trackings. */
+  async getOrders(trackingNumbers) {
+    const response = await this.post(
+      'lire',
+      { Colis: trackingNumbers.map((t) => ({ Tracking: t })) },
+      this._authHeaders(),
+    );
+    const rows = Array.isArray(response?.Colis) ? response.Colis : [];
+    return rows
+      .filter((c) => c && typeof c === 'object' && c.Tracking)
+      .map((c) => this._hydrateOrder(c));
+  }
+
+  /**
+   * Validate a parcel — flag it "Prêt à expédier" so Procolis dispatches it
+   * (`POST pret`, endpoint confirmed by the Vargo integration).
+   *
+   * @param {string} trackingNumber
+   * @returns {Promise<object>} raw Procolis response entry
+   */
+  async shipOrder(trackingNumber) {
+    const response = await this.post(
+      'pret',
+      { Colis: [{ Tracking: trackingNumber }] },
+      this._authHeaders(),
+    );
+    return response?.Colis?.[0] ?? response;
+  }
+
+  /** Validate several parcels in one `POST pret` call. */
+  async bulkShipOrders(trackingNumbers) {
+    const response = await this.post(
+      'pret',
+      { Colis: trackingNumbers.map((t) => ({ Tracking: t })) },
+      this._authHeaders(),
+    );
+    return Array.isArray(response?.Colis) ? response.Colis : [];
   }
 
   async getLabel(_trackingNumber) {

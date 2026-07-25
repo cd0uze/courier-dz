@@ -45,6 +45,23 @@ const STATUS_MAP = {
   annule: TRACKING_STATUS.CANCELLED,
   all: TRACKING_STATUS.UNKNOWN,
 
+  // ── Global FR statuses (from /get/trackings/info), normalized ───────────
+  pret_a_expedier: TRACKING_STATUS.PENDING,
+  pret_a_preparer: TRACKING_STATUS.PENDING,
+  stock_en_preparation: TRACKING_STATUS.PENDING,
+  suspendus: TRACKING_STATUS.PENDING,
+  retours_chez_livreur: TRACKING_STATUS.RETURNING,
+  retours_en_traitement: TRACKING_STATUS.RETURNING,
+  retours_prets: TRACKING_STATUS.RETURNING,
+  retours_recu: TRACKING_STATUS.RETURNED,
+  retours_a_dispatcher_vers_stock: TRACKING_STATUS.RETURNED,
+  retours_en_transit_stock: TRACKING_STATUS.RETURNED,
+  retours_en_stock: TRACKING_STATUS.RETURNED,
+  retours_archive: TRACKING_STATUS.RETURNED,
+  livre_encaisse_non_paye: TRACKING_STATUS.DELIVERED,
+  paiement_pret: TRACKING_STATUS.DELIVERED,
+  paiement_archive: TRACKING_STATUS.DELIVERED,
+
   // ── Legacy / generic fallbacks (accent-free variants for normalized input) ─
   created: TRACKING_STATUS.PENDING,
   pending: TRACKING_STATUS.PENDING,
@@ -204,6 +221,8 @@ export class EcotrackAdapter extends AbstractAdapter {
       fields.type = '2';
     }
     fields.stop_desk = data.deliveryType === DELIVERY_TYPE.STOP_DESK ? '1' : '0';
+    // Ecotrack supports a native fragile flag on order creation.
+    if (data.fragile) fields.fragile = '1';
 
     return fields;
   }
@@ -370,6 +389,123 @@ export class EcotrackAdapter extends AbstractAdapter {
    * `GET /api/v1/get/wilayas` → `[{ wilaya_id, wilaya_name }]`.
    * @returns {Promise<Array<{id:number, name:string}>>}
    */
+  /**
+   * Bulk status lookup — the official cron-friendly endpoint.
+   * `GET /api/v1/get/orders/status?trackings=a,b&status=all` (max 100/req).
+   * Returns a map keyed by tracking: { status, order_id, activity, ... }.
+   *
+   * @param {string[]} trackingNumbers
+   * @param {string[]} [statuses] - filter (official slugs); default 'all'
+   * @returns {Promise<Record<string, object>>}
+   */
+  async getOrdersStatus(trackingNumbers, statuses = ['all']) {
+    const list = (Array.isArray(trackingNumbers) ? trackingNumbers : [trackingNumbers]).filter(Boolean);
+    const out = {};
+    for (let offset = 0; offset < list.length; offset += 100) {
+      const chunk = list.slice(offset, offset + 100);
+      const response = await this.get('api/v1/get/orders/status', {
+        trackings: chunk.join(','),
+        status: (statuses ?? ['all']).join(','),
+      });
+      Object.assign(out, response?.data ?? {});
+    }
+    return out;
+  }
+
+  /**
+   * Tracking history for ONE parcel (`GET /api/v1/get/tracking/info`).
+   * @param {string} trackingNumber
+   * @returns {Promise<object>} { recipientName, shippedBy, activity: [...] }
+   */
+  async getTrackingHistory(trackingNumber) {
+    return this.get('api/v1/get/tracking/info', { tracking: String(trackingNumber) });
+  }
+
+  /**
+   * Tracking history for SEVERAL parcels
+   * (`GET /api/v1/get/trackings/info?trackings[]=…`, max 100/req).
+   * @param {string[]} trackingNumbers
+   * @returns {Promise<object>} map keyed by tracking
+   */
+  async getTrackingHistories(trackingNumbers) {
+    const list = (Array.isArray(trackingNumbers) ? trackingNumbers : [trackingNumbers]).filter(Boolean);
+    const out = {};
+    for (let offset = 0; offset < list.length; offset += 100) {
+      const chunk = list.slice(offset, offset + 100);
+      const response = await this.get('api/v1/get/trackings/info', { 'trackings[]': chunk });
+      Object.assign(out, response?.data ?? response ?? {});
+    }
+    return out;
+  }
+
+  /**
+   * Confirm the physical reception of returned parcels
+   * (`POST /api/v1/valid/returns { trackings }` → { returned: 'success'|'fail' }).
+   * @param {string[]} trackingNumbers
+   * @returns {Promise<boolean>} true when at least the batch was accepted
+   */
+  async validateReturns(trackingNumbers) {
+    const trackings = (Array.isArray(trackingNumbers) ? trackingNumbers : [trackingNumbers]).filter(Boolean);
+    const response = await this.post('api/v1/valid/returns', { trackings });
+    return response?.returned === 'success';
+  }
+
+  /**
+   * Ask the carrier to return a parcel that is out for delivery
+   * (`POST /api/v1/ask/for/order/return?tracking=`). The carrier MAY ignore it.
+   * @param {string} trackingNumber
+   * @returns {Promise<boolean>}
+   */
+  async askReturn(trackingNumber) {
+    const response = await this._request('POST', 'api/v1/ask/for/order/return', {
+      params: { tracking: String(trackingNumber) },
+    });
+    if (response?.success === false) {
+      throw new CourierError(
+        `Ecotrack askReturn refused for [${trackingNumber}]: ${response?.message ?? 'unknown'}`,
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Update an order before it is shipped
+   * (`POST /api/v1/update/order?tracking=` + Ecotrack fields: client, tel,
+   * adresse, commune, wilaya, montant, remarque, product, type, stop_desk,
+   * fragile, gps_link…). Fails with error 10001 once the order is validated.
+   * @param {string} trackingNumber
+   * @param {object} fields
+   */
+  async updateOrder(trackingNumber, fields = {}) {
+    const response = await this._request('POST', 'api/v1/update/order', {
+      params: { tracking: String(trackingNumber), ...fields },
+    });
+    if (response?.success === false) {
+      throw new CourierError(
+        `Ecotrack updateOrder failed for [${trackingNumber}]: ${response?.message ?? 'unknown'}`,
+        Number(response?.error ?? 0),
+      );
+    }
+    return response;
+  }
+
+  /**
+   * Append a note to a shipped parcel (`POST /api/v1/add/maj?tracking=&content=`).
+   * @param {string} trackingNumber
+   * @param {string} content - max 255 chars
+   */
+  async addNote(trackingNumber, content) {
+    return this._request('POST', 'api/v1/add/maj', {
+      params: { tracking: String(trackingNumber), content: String(content).slice(0, 255) },
+    });
+  }
+
+  /** Notes/updates applied to a parcel (`GET /api/v1/get/maj?tracking=`). */
+  async getNotes(trackingNumber) {
+    const response = await this.get('api/v1/get/maj', { tracking: String(trackingNumber) });
+    return Array.isArray(response) ? response : (response?.data ?? []);
+  }
+
   async getWilayas() {
     const response = await this.get('api/v1/get/wilayas');
     const rows = Array.isArray(response) ? response : (response?.data ?? []);

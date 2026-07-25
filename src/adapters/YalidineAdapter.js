@@ -10,7 +10,40 @@ import { CourierError } from '../exceptions/CourierError.js';
 import { OrderNotFoundError } from '../exceptions/OrderNotFoundError.js';
 
 /** @type {Record<string, string>} */
+// The 34 official `last_status` values (Yalidine API docs) + legacy variants
+// kept for older payloads. Exact-string lookup — Yalidine emits these verbatim.
 const STATUS_MAP = {
+  // ── Pre-pickup ────────────────────────────────────────────────────────────
+  'Pas encore expédié': TRACKING_STATUS.PENDING,
+  'A vérifier': TRACKING_STATUS.PENDING,
+  'Pas encore ramassé': TRACKING_STATUS.PENDING,
+  'En passation': TRACKING_STATUS.PICKED_UP,
+  'Ramassé': TRACKING_STATUS.PICKED_UP,
+  // ── Line-haul ─────────────────────────────────────────────────────────────
+  'Bloqué': TRACKING_STATUS.EXCEPTION,
+  'Débloqué': TRACKING_STATUS.IN_TRANSIT,
+  'Transfert': TRACKING_STATUS.IN_TRANSIT,
+  'Expédié': TRACKING_STATUS.IN_TRANSIT,
+  'Centre': TRACKING_STATUS.IN_TRANSIT,
+  'En localisation': TRACKING_STATUS.IN_TRANSIT,
+  'Vers Wilaya': TRACKING_STATUS.IN_TRANSIT,
+  'En transit': TRACKING_STATUS.IN_TRANSIT,
+  'Reçu à Wilaya': TRACKING_STATUS.IN_TRANSIT,
+  // ── Last mile ─────────────────────────────────────────────────────────────
+  'Prêt pour livreur': TRACKING_STATUS.OUT_FOR_DELIVERY,
+  'Sorti en livraison': TRACKING_STATUS.OUT_FOR_DELIVERY,
+  'En alerte': TRACKING_STATUS.FAILED_DELIVERY,
+  'Echèc livraison': TRACKING_STATUS.FAILED_DELIVERY,
+  'Echange échoué': TRACKING_STATUS.FAILED_DELIVERY,
+  // ── Returns ───────────────────────────────────────────────────────────────
+  'Retour vers centre': TRACKING_STATUS.RETURNING,
+  'Retourné au centre': TRACKING_STATUS.RETURNING,
+  'Retour transfert': TRACKING_STATUS.RETURNING,
+  'Retour groupé': TRACKING_STATUS.RETURNING,
+  'Retour à retirer': TRACKING_STATUS.RETURNING,
+  'Retour vers vendeur': TRACKING_STATUS.RETURNING,
+  'Retourné au vendeur': TRACKING_STATUS.RETURNED,
+  // ── Legacy / shared entries ───────────────────────────────────────────────
   'En préparation': TRACKING_STATUS.PENDING,
   'Prêt à expédier': TRACKING_STATUS.PENDING,
   'En attente': TRACKING_STATUS.PENDING,

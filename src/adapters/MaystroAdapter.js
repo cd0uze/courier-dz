@@ -4,8 +4,46 @@ import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { OrderData } from '../data/OrderData.js';
 import { LabelData } from '../data/LabelData.js';
+import { RateData } from '../data/RateData.js';
 import { CourierError } from '../exceptions/CourierError.js';
 import { OrderNotFoundError } from '../exceptions/OrderNotFoundError.js';
+
+/**
+ * Maystro numeric status codes → canonical TRACKING_STATUS.
+ * Source: Vargo MaystroPackagesStatus enum (confirmed against the Maystro
+ * platform's internal codes). Maystro returns these integers in the
+ * `status` field of order payloads and webhooks.
+ * @type {Record<number, string>}
+ */
+const NUMERIC_STATUS_MAP = {
+  4: TRACKING_STATUS.PENDING,            // Created
+  5: TRACKING_STATUS.PENDING,            // Pick up requested
+  6: TRACKING_STATUS.PENDING,            // In process
+  8: TRACKING_STATUS.PICKED_UP,          // Waiting transit
+  9: TRACKING_STATUS.IN_TRANSIT,         // In transit to be shipped
+  10: TRACKING_STATUS.RETURNING,         // In transit to be returned
+  11: TRACKING_STATUS.PENDING,           // Pending
+  12: TRACKING_STATUS.EXCEPTION,         // Out of stock
+  15: TRACKING_STATUS.PICKED_UP,         // Ready to ship
+  22: TRACKING_STATUS.OUT_FOR_DELIVERY,  // Assigned (to delivery agent)
+  31: TRACKING_STATUS.OUT_FOR_DELIVERY,  // Shipped
+  32: TRACKING_STATUS.FAILED_DELIVERY,   // Alerted
+  41: TRACKING_STATUS.DELIVERED,         // Delivered
+  42: TRACKING_STATUS.FAILED_DELIVERY,   // Postponed
+  50: TRACKING_STATUS.CANCELLED,         // Aborted
+  51: TRACKING_STATUS.RETURNING,         // Ready to return
+  52: TRACKING_STATUS.RETURNED,          // Taken by store
+  53: TRACKING_STATUS.EXCEPTION,         // Not received
+};
+
+/** French labels for Maystro numeric statuses (useful for UIs / logs). */
+export const MAYSTRO_STATUS_LABELS = Object.freeze({
+  4: 'Créé', 5: 'Ramassage demandé', 6: 'En traitement', 8: 'En attente de transit',
+  9: 'En transit pour expédition', 10: 'En transit pour retour', 11: 'En attente',
+  12: 'Rupture de stock', 15: 'Prêt à expédier', 22: 'Assigné', 31: 'Expédié',
+  32: 'Alerté', 41: 'Livré', 42: 'Reporté', 50: 'Annulé', 51: 'Prêt à retourner',
+  52: 'Récupéré par le magasin', 53: 'Non reçu',
+});
 
 /** @type {Record<string, string>} */
 const STATUS_MAP = {
@@ -67,11 +105,14 @@ export class MaystroAdapter extends AbstractAdapter {
   }
 
   normalizeStatus(rawStatus) {
-    // Maystro exposes status differently across endpoints (documented string
-    // slugs on the ones we have). Coerce defensively so a numeric/undefined
-    // status never throws; anything unmapped surfaces as UNKNOWN with the
-    // rawStatus preserved on OrderData. We do NOT invent a numeric-code table
-    // — the docs available to us don't publish one (audit "règle d'or").
+    // Maystro's canonical status is a NUMERIC code (4…53) — mapped first via
+    // the table imported from the Vargo provider census. String slugs from
+    // older payloads remain supported as a fallback; anything unmapped
+    // surfaces as UNKNOWN with the rawStatus preserved on OrderData.
+    const code = Number(rawStatus);
+    if (Number.isInteger(code) && code in NUMERIC_STATUS_MAP) {
+      return NUMERIC_STATUS_MAP[code];
+    }
     return STATUS_MAP[String(rawStatus ?? '').toLowerCase()] ?? TRACKING_STATUS.UNKNOWN;
   }
 
@@ -196,11 +237,13 @@ export class MaystroAdapter extends AbstractAdapter {
       price: { required: true, type: 'integer' },
       delivery_type: { required: true, type: 'integer', enum: [1, 2] },
       /**
-       * Maystro requires every line to reference a product already registered in
-       * the store catalogue (`product_id`). Pass it through notes:
-       *   "maystro_product:{id}|optional note"
-       * and (optionally) request express delivery:
-       *   "maystro_express:1|maystro_product:{id}|optional note"
+       * OPTIONAL. The create endpoint auto-registers a catalogue product from the
+       * line's `logistical_description` when no id is given (verified live), so a
+       * pre-registered product is NOT required. To reuse an existing catalogue
+       * product instead, pass its `id` (UUID) via notes:
+       *   "maystro_product:{uuid}|optional note"
+       * Request express delivery with:
+       *   "maystro_express:1|optional note"
        */
       notes: { required: false, type: 'string', maxLength: 255 },
     };
@@ -212,13 +255,14 @@ export class MaystroAdapter extends AbstractAdapter {
 
     const { productId, express, note } = this._parseMaystroNotes(data.notes);
 
-    if (!productId) {
-      throw new CourierError(
-        'Maystro requires a registered product_id. Pass it via notes: ' +
-        '"maystro_product:{id}|optional note". The product must already exist ' +
-        'in the Maystro store catalogue (create it via createProduct()).',
-      );
-    }
+    // Maystro auto-creates a catalogue product from `logistical_description` when
+    // `product_id` is omitted (verified live). Only send `product_id` when the
+    // caller explicitly references an existing catalogue product via notes.
+    const product = {
+      quantity: data.quantity != null && data.quantity > 0 ? data.quantity : 1,
+      logistical_description: data.productDescription || 'Produit',
+    };
+    if (productId) product.product_id = productId;
 
     const payload = {
       source: 4, // required constant per Maystro docs
@@ -226,16 +270,12 @@ export class MaystroAdapter extends AbstractAdapter {
       commune: this._requireCommuneId(data.toCommune),
       customer_phone: data.phone,
       customer_name: `${data.firstName} ${data.lastName}`.trim(),
+      // Total door COD (product + delivery). Maystro derives its own delivery fee
+      // and displays the split; the customer pays this full amount on delivery.
       product_price: Math.round(data.price),
       delivery_type: maystroDeliveryType,
       express, // required field on the current create endpoint
-      products: [
-        {
-          product_id: productId,
-          quantity: data.quantity != null && data.quantity > 0 ? data.quantity : 1,
-          logistical_description: data.productDescription,
-        },
-      ],
+      products: [product],
       external_order_id: data.orderId,
     };
 
@@ -248,11 +288,58 @@ export class MaystroAdapter extends AbstractAdapter {
   }
 
   /**
+   * Per-wilaya shipping rates. Maystro exposes pricing only per commune
+   * (`GET stores/delivery_price/?commune={id}`), but prices are uniform across
+   * the communes of a wilaya (verified live: every commune of a given wilaya
+   * returns the same home/desk fee). So we sample ONE commune per wilaya instead
+   * of pricing all ~1500 communes — ~3 calls/wilaya, paced by the throttle.
+   *
+   * @returns {Promise<Array<RateData>>}
+   */
+  async getRates() {
+    const wilayas = await this.getWilayas();
+    const rates = [];
+    for (const w of wilayas) {
+      let communes;
+      try { communes = await this.getCommunes(w.id); } catch { continue; }
+      const sample = (communes ?? []).find((c) => c.id != null);
+      if (!sample) continue;
+
+      let home = null;
+      let desk = null;
+      try { home = await this.getDeliveryPrice(sample.id); } catch { /* leave null */ }
+      try {
+        desk = await this.getDeliveryPrice(sample.id, { deliveryType: DELIVERY_TYPE.STOP_DESK });
+      } catch { /* leave null */ }
+      if (home == null && desk == null) continue;
+
+      rates.push(new RateData({
+        provider: PROVIDERS.MAYSTRO,
+        toWilayaId: w.id,
+        toWilayaName: w.name,
+        homeDeliveryPrice: home ?? 0,
+        stopDeskPrice: desk ?? 0,
+        deliveryType: DELIVERY_TYPE.HOME,
+      }));
+    }
+    return rates;
+  }
+
+  /**
    * Create many orders at once via Maystro's dedicated bulk import host.
    *
    * `POST https://import-export-orders-as6qwsolmq-ew.a.run.app/api/delivery/orders/`
    * accepts an array of order objects and returns one result per order
    * ({ id, external_id, tracking, delivery_price, success, errors }).
+   *
+   * ⚠️ Unlike createOrder(), the bulk host does NOT auto-create products: each
+   * line must reference an EXISTING catalogue product by its numeric `display_id`
+   * (verified live — a UUID or a bare description is rejected with code 50). Pass
+   * it via notes: "maystro_product:{display_id}". Lines without one are still sent
+   * so Maystro reports their error rather than us dropping them silently.
+   *
+   * The response echoes results positionally (its `external_id` field comes back
+   * null even when external_order_id was sent), so callers must map by index.
    *
    * The doc does NOT specify a maximum batch size, so none is enforced here
    * (see audit "règle d'or"). The absolute URL bypasses the adapter's base URL.
@@ -276,7 +363,10 @@ export class MaystroAdapter extends AbstractAdapter {
         commune: this._requireCommuneId(data.toCommune),
       };
       if (note != null) order.note_to_driver = note;
-      if (productId) order.products = [{ product_id: productId, quantity: data.quantity ?? 1 }];
+      // Bulk host field is `details[].product` = catalogue product display_id.
+      if (productId) {
+        order.details = [{ product: productId, quantity: data.quantity ?? 1 }];
+      }
       return order;
     });
 
@@ -300,10 +390,12 @@ export class MaystroAdapter extends AbstractAdapter {
   }
 
   async getLabel(trackingNumber) {
-    // Maystro returns raw PDF bytes from a POST endpoint
-    const rawPdf = await this.requestRaw('POST', 'delivery/starter/starter_bordureau/', {
+    // `trackingNumber` is Maystro's order UUID (raw.id — see _hydrateOrder), so we
+    // use the v2 bordereau endpoint, which is keyed by UUID. The v1 endpoint is
+    // keyed by the numeric `display_id` and silently returns an ~880-byte blank
+    // PDF when fed a UUID (verified live), so it must not be used here.
+    const rawPdf = await this.requestRaw('POST', 'delivery/starter/v2/starter_bordureau/', {
       data: {
-        all_created: true,
         orders_ids: [trackingNumber],
       },
     });
@@ -317,6 +409,110 @@ export class MaystroAdapter extends AbstractAdapter {
       trackingNumber,
       rawPdf.toString('base64'),
     );
+  }
+
+  /**
+   * Cancel (abort) an order — Maystro cancels by PATCHing the order status to
+   * 50 (Aborted) with abort_reason 21. Official endpoint (GitBook docs):
+   * `PATCH shared/status/{orderId}/`. The Vargo integration used
+   * `stores/orders/{id}/status/`, kept as a fallback for older deployments.
+   *
+   * @param {string} trackingNumber - Maystro order id (UUID or display id)
+   * @returns {Promise<boolean>}
+   */
+  async cancelOrder(trackingNumber) {
+    const id = encodeURIComponent(trackingNumber);
+    const payload = { status: 50, abort_reason: 21 };
+    try {
+      await this.patch(`shared/status/${id}/`, payload);
+    } catch (err) {
+      // 404 → older deployments expose the cancel under stores/orders/…
+      if (err?.statusCode !== 404) throw err;
+      await this.patch(`stores/orders/${id}/status/`, payload);
+    }
+    return true;
+  }
+
+  /**
+   * Update an order in place (`PATCH stores/orders/{id}/`). Accepts a partial
+   * payload of Maystro fields: destination_text, customer_phone, customer_name,
+   * wilaya, commune, note_to_driver, product_price, products.
+   *
+   * @param {string} trackingNumber - Maystro order id
+   * @param {object} fields - Partial Maystro-shaped fields to update
+   * @returns {Promise<object>} raw Maystro response
+   */
+  async updateOrder(trackingNumber, fields) {
+    return this.patch(`stores/orders/${encodeURIComponent(trackingNumber)}/`, fields);
+  }
+
+  /**
+   * Tracking history events for an order. Official endpoint (GitBook docs):
+   * `GET stores/history_order/{order_id}` → [{ status, created_at, comment }].
+   * Older paths seen in the wild are kept as fallbacks.
+   *
+   * @param {string} trackingNumber
+   * @returns {Promise<Array<object>>}
+   */
+  async getTrackingHistory(trackingNumber) {
+    const id = encodeURIComponent(trackingNumber);
+    let response = null;
+    for (const path of [
+      `stores/history_order/${id}`,        // official (docs v. GitBook)
+      `stores/orders/history_order/${id}`, // vargo variant
+      `orders/history_order/${id}`,        // legacy variant
+    ]) {
+      try {
+        response = await this.get(path);
+        break;
+      } catch (err) {
+        if (err?.statusCode !== 404) throw err;
+      }
+    }
+    const items = response?.data ?? response?.results ?? response;
+    return Array.isArray(items) ? items : [];
+  }
+
+  // ─── Webhooks (endpoints from the Vargo integration) ─────────────────────
+
+  /**
+   * Register a webhook endpoint. Maystro pushes order-status events to it.
+   * `POST stores/hooks/costume/` — { endpoint, trigger_type_id? }.
+   * Trigger type ids come from listWebhookTypes(); omit to receive all events.
+   *
+   * @param {string} url - Public HTTPS endpoint of your app
+   * @param {string|null} [triggerTypeId] - Optional trigger type UUID
+   * @returns {Promise<object>} raw Maystro response (includes the webhook id)
+   */
+  async createWebhook(url, triggerTypeId = null) {
+    const payload = { endpoint: url };
+    if (triggerTypeId != null) payload.trigger_type_id = triggerTypeId;
+    return this.post('stores/hooks/costume/', payload);
+  }
+
+  /** List registered webhook endpoints (`GET stores/hooks/costume/`). */
+  async listWebhooks() {
+    const response = await this.get('stores/hooks/costume/');
+    const items = response?.data ?? response?.results ?? response;
+    return Array.isArray(items) ? items : [items].filter(Boolean);
+  }
+
+  /** Delete a webhook endpoint (`DELETE stores/hooks/costume/{id}/`). */
+  async deleteWebhook(webhookId) {
+    await this.delete(`stores/hooks/costume/${encodeURIComponent(webhookId)}/`);
+    return true;
+  }
+
+  /** List available webhook trigger types (`GET stores/hooks/types/`). */
+  async listWebhookTypes() {
+    const response = await this.get('stores/hooks/types/');
+    const items = response?.data ?? response?.results ?? response;
+    return Array.isArray(items) ? items : [items].filter(Boolean);
+  }
+
+  /** Fire a test webhook to the registered endpoint (`POST stores/hooks/test/request/`). */
+  async sendTestWebhook() {
+    return this.post('stores/hooks/test/request/');
   }
 
   /**

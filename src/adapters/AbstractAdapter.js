@@ -401,6 +401,20 @@ export class AbstractAdapter {
   }
 
   /**
+   * Effective note string for a CreateOrderData, prefixing "FRAGILE" when the
+   * order is flagged fragile and the provider has no native fragile field.
+   * Adapters WITH native support (Ecotrack `fragile`, MDM `fragile`) use the
+   * API field instead and must not call this helper.
+   *
+   * @param {import('../data/CreateOrderData.js').CreateOrderData} data
+   * @returns {string|null}
+   */
+  notesWithFragile(data) {
+    if (!data?.fragile) return data?.notes ?? null;
+    return ['FRAGILE', data.notes].filter(Boolean).join(' | ');
+  }
+
+  /**
    * Parse a date string or return null.
    * @param {string|null|undefined} value
    * @returns {Date|null}

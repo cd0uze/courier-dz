@@ -20,6 +20,8 @@ export class CreateOrderData {
    * @param {number} params.price - Cash-on-delivery amount in DZD (0 = free/prepaid)
    * @param {number} [params.deliveryType] - DELIVERY_TYPE.HOME or DELIVERY_TYPE.STOP_DESK
    * @param {boolean} [params.freeShipping] - Whether the delivery fee is waived
+   * @param {boolean} [params.fragile] - Whether the parcel content is fragile (forwarded to
+   *   providers that support it: Ecotrack engine, Noest `type_id: 2`, MDM; ignored elsewhere)
    * @param {boolean} [params.hasExchange] - Whether this parcel has an exchange/return product
    * @param {string|null} [params.exchangeProduct] - Product to collect in exchange
    * @param {number|null} [params.stopDeskId] - Stop-desk ID when deliveryType = STOP_DESK
@@ -44,6 +46,7 @@ export class CreateOrderData {
     price,
     deliveryType = DELIVERY_TYPE.HOME,
     freeShipping = false,
+    fragile = false,
     hasExchange = false,
     exchangeProduct = null,
     stopDeskId = null,
@@ -67,6 +70,7 @@ export class CreateOrderData {
     this.price = price;
     this.deliveryType = deliveryType;
     this.freeShipping = freeShipping;
+    this.fragile = fragile;
     this.hasExchange = hasExchange;
     this.exchangeProduct = exchangeProduct;
     this.stopDeskId = stopDeskId;
@@ -106,6 +110,7 @@ export class CreateOrderData {
       price: Number(data.price ?? 0),
       deliveryType,
       freeShipping: Boolean(data.free_shipping ?? data.freeShipping ?? data.freeshipping ?? false),
+      fragile: Boolean(data.fragile ?? data.is_fragile ?? data.isFragile ?? false),
       hasExchange: Boolean(data.has_exchange ?? data.hasExchange ?? false),
       exchangeProduct: data.exchange_product != null
         ? String(data.exchange_product)
@@ -142,6 +147,7 @@ export class CreateOrderData {
       price: this.price,
       delivery_type: this.deliveryType,
       free_shipping: this.freeShipping,
+      fragile: this.fragile,
       has_exchange: this.hasExchange,
       exchange_product: this.exchangeProduct,
       stop_desk_id: this.stopDeskId,

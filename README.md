@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/courier-dz.svg)](https://www.npmjs.com/package/courier-dz)
 [![license](https://img.shields.io/npm/l/courier-dz.svg)](https://github.com/cd0uze/courier-dz/blob/main/LICENSE)
 
-Unified API client for Algerian courier / delivery providers. One package, one interface for **32 providers** across **7 API engines**.
+Unified API client for Algerian courier / delivery providers. One package, one interface for **94 providers** across **11 API engines**.
 
 Pure ESM + CommonJS. Zero runtime dependencies except `axios`.
 
@@ -12,7 +12,7 @@ Pure ESM + CommonJS. Zero runtime dependencies except `axios`.
 ## Table of contents
 
 - [Why courier-dz?](#why-courier-dz)
-- [Supported providers](#supported-providers--32-total)
+- [Supported providers](#supported-providers--94-total)
 - [Method support matrix](#method-support-matrix)
 - [Installation](#installation)
 - [Configuration & credentials](#configuration--credentials)
@@ -29,7 +29,13 @@ Pure ESM + CommonJS. Zero runtime dependencies except `axios`.
   - [ZR Express NEW](#zr-express-new)
   - [Zimou Express](#zimou-express)
   - [Noest Express](#noest-express)
-  - [Ecotrack engine (23 providers)](#ecotrack-engine-23-providers)
+  - [Ecotrack engine (74 providers)](#ecotrack-engine-74-providers)
+  - [Elogistia](#elogistia)
+  - [Near Delivery](#near-delivery)
+  - [E-COM Delivery](#e-com-delivery)
+  - [MDM Express](#mdm-express)
+- [Webhooks](#webhooks)
+- [Free shipping & fragile flags](#free-shipping--fragile-flags)
 - [Rate limiting](#rate-limiting)
 - [Error handling](#error-handling)
 - [Express.js integration](#expressjs-integration-mern)
@@ -50,11 +56,11 @@ Every Algerian courier exposes a different API shape, different field names, and
 
 ---
 
-## Supported providers — 32 total
+## Supported providers — 94 total
 
 Providers are grouped by the **API engine** they share. Adapters are picked automatically by `CourierManager` from the provider ID.
 
-### Standalone engines (9 providers)
+### Standalone engines (13 providers)
 
 | Provider             | ID              | Base URL                                | Auth |
 |----------------------|-----------------|-----------------------------------------|------|
@@ -67,10 +73,38 @@ Providers are grouped by the **API engine** they share. Adapters are picked auto
 | ZR Express NEW       | `zrexpress_new` | `api.zrexpress.app`                     | `X-Tenant` + `X-Api-Key` |
 | Zimou Express        | `zimou`         | `zimou.express/api`                     | `Authorization: Bearer <token>` |
 | Noest Express        | `noest`         | `app.noest-dz.com`                      | `Authorization: Bearer <token>` + `user_guid` on writes |
+| Elogistia            | `elogistia`     | `api.elogistia.com`                     | query param: `apiKey=` (parcel ops) / `key=` (catalogue reads) |
+| Near Delivery        | `near_delivery` | `api.neardelivery.app/api/v1`           | `ApiKey` + `ApiSecret` headers |
+| E-COM Delivery       | `ecom_delivery` | `ecom-dz.net`                           | `Token` + `Key` headers |
+| MDM Express          | `mdm`           | `api.mdm.express`                       | `x-api-key` header |
 
-> Yalidine, Yalitec and Guepex all run the **identical Yalidine engine** — same endpoints, only the subdomain differs.
+### Yalidine engine — 6 providers
 
-### Ecotrack engine — 23 providers sharing one API surface
+Same endpoints, only the subdomain differs. Auth: `X-API-ID` + `X-API-TOKEN`.
+
+| Provider       | ID               | Base URL                 |
+|----------------|------------------|--------------------------|
+| Yalidine       | `yalidine`       | `api.yalidine.app`       |
+| Yalitec        | `yalitec`        | `api.yalitec.me`         |
+| Guepex         | `guepex`         | `api.guepex.app`         |
+| Economiqua     | `economiqua`     | `api.economiqua.app`     |
+| Easy and Speed | `easy_and_speed` | `api.easyandspeed.app`   |
+| We Can Services| `wecan`          | `api.wecanservices.me`   |
+
+### Procolis engine — 6 providers
+
+All share `procolis.com/api_v1`, each account with its own `token` + `key`.
+
+| Provider            | ID                |
+|---------------------|-------------------|
+| Procolis            | `procolis`        |
+| ZR Express (legacy) | `zrexpress`       |
+| ABEX Express        | `abex`            |
+| Leopard Express     | `leopard_express` |
+| Colilog Express     | `colilog`         |
+| Flash Delivery      | `flash_delivery`  |
+
+### Ecotrack engine — 74 providers sharing one API surface
 
 All use `Authorization: Bearer <token>` (the token is also sent as an `api_token` query param).
 
@@ -100,6 +134,10 @@ All use `Authorization: Bearer <token>` (the token is also sent as an `api_token
 | Swift             | `swift`           | `swift.ecotrack.dz`                |
 | AlloLivraison     | `allolivraison`   | `allolivraison.ecotrack.dz`        |
 
+Plus **51 more Ecotrack clones** imported from the Vargo provider census, all served by the same `EcotrackAdapter` (only base URL + metadata differ):
+
+`samex`, `sbl_express`, `weewee_delivery`, `jaguar_livraison`, `rj360_express`, `expedia_chrono`, `mars_express`, `lynx`, `eco_rapide_express`, `navex_delivery`, `rm_express`, `rihal_express`, `atlas_express`, `boogi`, `chronorex`, `cirta_express`, `colireli`, `colizone`, `gs_ecommerce`, `jo_express`, `om_express`, `on_time_express`, `pdex`, `quick_delivery`, `rs_express`, `ruta_express`, `tawsil_star`, `univer_delivery`, `vitrans`, `aranex`, `bfk_express`, `hdd_express`, `med_express`, `alania_express`, `champion_logistics`, `colex`, `delivro_mail`, `elguide_delivery`, `fast_horse_express`, `fz_delivery`, `imir_logistics`, `lihlih_express`, `mazaya_logistics`, `ovred`, `speed_mail`, `win_delivery`, `amana_speed`, `zinya_tec`, `sultan_colis_express`, `major_ex`, `red_ex`
+
 Use the exported `PROVIDERS` constant instead of raw strings:
 
 ```js
@@ -111,29 +149,45 @@ PROVIDERS.DHD;           // 'dhd'
 
 Engine helpers are exported too: `isYalidineEngine(id)`, `isEcotrackEngine(id)`, `isProcolisEngine(id)`, `requiresApiId(id)`, `getBaseUrl(id)`, `getProviderRateLimits(id)`.
 
+Capability helpers tell you what a provider natively supports so your dashboard can adapt:
+
+```js
+import { supportsFreeShipping, supportsFragile, supportsBulkDelete, supportsBulkCreate, supportsWebhooks } from 'courier-dz';
+
+supportsFreeShipping('yalidine');   // true  — native `freeshipping` flag
+supportsFreeShipping('noest');      // false — deduct the fee from the COD amount yourself
+supportsFragile('dhd');             // true  — Ecotrack native `fragile` flag
+supportsFragile('noest');           // false — adapter prefixes the note with "FRAGILE" instead
+supportsBulkDelete('ecom_delivery');// true
+supportsWebhooks('maystro');        // true  — register push notifications, no polling needed
+```
+
 ---
 
 ## Method support matrix
 
 Legend: ✅ implemented · ❌ throws `UnsupportedOperationError` · ⚙️ provider-specific extra method.
 
-| Method | Yalidine / Yalitec / Guepex | Maystro | Procolis / ZR (legacy) | ZR Express NEW | Zimou | Noest | Ecotrack (all 23) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `testCredentials()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `metadata()` / `provider()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `getCreateOrderValidationRules()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `createOrder(data)` | ✅ | ✅ ¹ | ✅ | ✅ ² | ✅ | ✅ | ✅ |
-| `bulkCreateOrders(data[])` | ✅ | ✅ | ❌ | ✅ (≤100) | ❌ | ✅ (≤100) | ✅ (≤100) |
-| `getOrder(tracking)` | ✅ | ✅ | ✅ | ✅ ³ | ✅ ⁴ | ✅ | ✅ |
-| `getOrders(tracking[])` | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `getRates(from, to)` | ✅ ⁵ | ❌ ⁶ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `getLabel(tracking)` | ✅ (HTML URL) | ✅ (PDF b64) | ❌ | ✅ (HTML URL) | ✅ (PDF URL) | ✅ (PDF b64) | ✅ (PDF b64) |
-| `cancelOrder(tracking)` | ✅ ⁷ | ❌ | ❌ | ✅ | ✅ | ✅ ⁷ | ✅ ⁷ |
-| `shipOrder(...)` | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
-| `getWilayas()` | ✅ | ✅ | ❌ | ⚙️ `getTerritories()` | ✅ | ✅ | ✅ |
-| `getCommunes(wilayaId)` | ✅ | ✅ | ❌ | ⚙️ `getTerritories()` | ✅ | ✅ | ✅ |
-| stop-desk directory | ⚙️ `getCenters()` | — | — | ⚙️ `getOffices()` | ⚙️ `getOffices()` | ⚙️ `getOffices()` | — |
-| other extras | `bulkDeleteOrders()` | ⚙️ `createProduct()`, `getDeliveryPrice()` | — | `bulkDeleteByIds()`, `bulkDeleteByTracking()`, `searchTerritory()` | — | `bulkShipOrders()` | — |
+| Method | Yalidine engine (6) | Maystro | Procolis engine (6) | ZR Express NEW | Zimou | Noest | Ecotrack (all 74) | Elogistia | Near Delivery | E-COM Delivery | MDM |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `testCredentials()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `metadata()` / `provider()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `getCreateOrderValidationRules()` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `createOrder(data)` | ✅ | ✅ ¹ | ✅ | ✅ ² | ✅ | ✅ | ✅ | ✅ | ✅ ⁸ | ✅ | ✅ ⁹ |
+| `bulkCreateOrders(data[])` | ✅ | ✅ | ✅ | ✅ (≤100) | ❌ | ✅ (≤100) | ✅ (≤100) | ❌ | ✅ | ✅ | ✅ |
+| `getOrder(tracking)` | ✅ | ✅ | ✅ | ✅ ³ | ✅ ⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `getOrders(tracking[])` | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚙️ `searchOrders()` |
+| `getRates(from, to)` | ✅ ⁵ | ❌ ⁶ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `getLabel(tracking)` | ✅ (HTML URL) | ✅ (PDF b64) | ❌ | ✅ (HTML URL) | ✅ (PDF URL) | ✅ (PDF b64) | ✅ (PDF b64) | ✅ (PDF b64) | ✅ (PDF b64) | ❌ | ⚙️ `generateLabels()` |
+| `cancelOrder(tracking)` | ✅ ⁷ | ✅ (abort) | ❌ | ✅ | ✅ | ✅ ⁷ | ✅ ⁷ | ✅ | ✅ | ✅ | ❌ |
+| `shipOrder(...)` | ❌ | ❌ | ✅ (`pret`) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| `updateOrder(...)` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| tracking history | — | ⚙️ `getTrackingHistory()` | — | — | — | — | — | ⚙️ `getTrackingHistory()` | ⚙️ `getTrackingHistory()` | ⚙️ `getTrackingHistory()` | ⚙️ `getTrackingHistory()` |
+| webhooks | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `getWilayas()` | ✅ | ✅ | ❌ | ⚙️ `getTerritories()` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `getCommunes(wilayaId)` | ✅ | ✅ | ❌ | ⚙️ `getTerritories()` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| stop-desk directory | ⚙️ `getCenters()` | — | — | ⚙️ `getOffices()` | ⚙️ `getOffices()` | ⚙️ `getOffices()` | — | ⚙️ `getOffices()` | ⚙️ `getOffices()` (buralists) | — | — |
+| other extras | `bulkDeleteOrders()` | ⚙️ `createProduct()`, `getDeliveryPrice()` | `bulkShipOrders()` | `bulkDeleteByIds()`, `bulkDeleteByTracking()`, `searchTerritory()` | — | `bulkShipOrders()` | — | — | ⚙️ `getCenters()` | `bulkDeleteOrders()`, `bulkShipOrders()` | ⚙️ `getStatusStatistics()` |
 
 > ¹ Maystro requires a registered catalogue `product_id` — see [Maystro](#maystro-delivery).
 > ² ZR Express NEW requires city + district territory UUIDs **and** a source hub id — see [ZR Express NEW](#zr-express-new).
@@ -142,6 +196,8 @@ Legend: ✅ implemented · ❌ throws `UnsupportedOperationError` · ⚙️ prov
 > ⁵ Yalidine `getRates()` **requires** `fromWilayaId`.
 > ⁶ Maystro has no per-wilaya rate grid; use `getDeliveryPrice(communeId)` instead.
 > ⁷ Deletion is only accepted **before** the parcel is shipped/validated (`"en préparation"` state).
+> ⁸ Near Delivery requires a destination **buralist id** (relay point) via `stopDeskId` — resolve it with `getOffices()`.
+> ⁹ MDM identifies destinations by a provider-side `cityId` passed in `toCommune`.
 
 ---
 
@@ -428,6 +484,12 @@ const rates31 = await y.getRates(16, 31);    // from Alger to Oran (per-commune)
 
 ### Maystro Delivery
 
+> Maystro webhook bodies are JSON **base64-encoded twice** (official docs).
+> `parseWebhookPayload('maystro', body)` decodes strings and `data`/`payload`
+> envelopes transparently. Cancel uses the official `PATCH shared/status/{id}/`
+> (older `stores/orders/{id}/status/` kept as fallback); history uses
+> `GET stores/history_order/{id}`.
+
 Auth: `Authorization: Token <token>` (Django REST Framework — **not** Bearer). Two Maystro-specific rules matter:
 
 - **`toCommune` must be a numeric Maystro commune id**, not a name. Resolve it via `getCommunes()` first.
@@ -459,7 +521,16 @@ const order = await m.createOrder(data);
 | `getCommunes(wilayaId?)` | Commune list (defensive field mapping — raw row preserved under `.raw`). |
 | `getDeliveryPrice(communeId, {express, deliveryType})` | Per-commune fee in DZD, or `null` if none. **Maystro's replacement for `getRates()`**. |
 | `createProduct(storeId, description, productId?)` | Create a catalogue product to reference in orders. |
-| `getRates()` / `cancelOrder()` | ❌ Not supported → `UnsupportedOperationError`. |
+| `cancelOrder(id)` | Abort the order: `PATCH stores/orders/{id}/status/` with `{status: 50}`. |
+| `updateOrder(id, fields)` | `PATCH stores/orders/{id}/` with partial Maystro fields. |
+| `getTrackingHistory(id)` | Status-change history of the order. |
+| `createWebhook(url, triggerTypeId?)` | Register a push endpoint (`POST stores/hooks/costume/`). |
+| `listWebhooks()` / `deleteWebhook(id)` / `listWebhookTypes()` / `sendTestWebhook()` | Manage webhook endpoints. |
+| `getRates()` | ❌ Not supported → `UnsupportedOperationError`. |
+
+Maystro reports order status as a **numeric code** — the adapter maps the full
+table (4=Créé … 41=Livré, 50=Annulé, 52=Récupéré par le magasin) to canonical
+statuses, and the French labels are exported as `MAYSTRO_STATUS_LABELS`.
 
 ---
 
@@ -472,14 +543,30 @@ Both IDs share `procolis.com/api_v1`. Auth: `token` + `key` sent as HTTP headers
 | `testCredentials()` | `GET token` → checks `Statut === 'Accès activé'`. |
 | `getRates(from?, to?)` | `POST tarification` → per-wilaya home/stop-desk prices. Filtered by `toWilayaId` when given. |
 | `createOrder(data)` | `POST add_colis`. Rejects duplicates (`"Double Tracking"`) and non-`"Good"` responses with `CourierError`. |
-| `getOrder(tracking)` | `POST lire`. Throws `OrderNotFoundError` if empty. |
+| `bulkCreateOrders(data[])` | One `POST add_colis` with several `Colis` entries; per-order results. |
+| `getOrder(tracking)` / `getOrders(tracking[])` | `POST lire` (single or batched). Throws `OrderNotFoundError` if empty. |
+| `shipOrder(tracking)` / `bulkShipOrders(tracking[])` | `POST pret` — flag parcels "Prêt à expédier" so Procolis dispatches them. |
 | `getLabel()` / `cancelOrder()` | ❌ Not supported → `UnsupportedOperationError`. |
+
+The status dictionary covers the full 28 documented Procolis statuses
+(`En Preparation`, `Dispatcher`, `Au Bureau`, `SD - …`, `Retour Stock`, …) —
+`normalizeStatus()` folds them all into the canonical vocabulary.
+
+The same adapter serves the Procolis clones: **ABEX** (`abex`), **Leopard
+Express** (`leopard_express`), **Colilog** (`colilog`) and **Flash Delivery**
+(`flash_delivery`) — each with its own `token` + `key`.
 
 > The legacy ZR Express API is deprecated by the provider in favour of the new platform — prefer `zrexpress_new` for new integrations.
 
 ---
 
 ### ZR Express NEW
+
+> **State trap (fixed here):** without an explicit `stateId`, ZR creates the
+> parcel in `OrderReceived`, which the hub never picks up. Since 1.1 the adapter
+> resolves the `ReadyToDispatch` workflow state automatically (cached) and
+> stamps it on every created parcel. Pass your own `stateId` in the payload to
+> override.
 
 A fully redesigned REST API (`api.zrexpress.app`, v1) that shares nothing with the legacy Procolis integration. Auth: **two headers** `X-Tenant` + `X-Api-Key`.
 
@@ -540,6 +627,12 @@ On the returned `OrderData`, `order.notes` names the assigned partner (`"Via: Ya
 
 ### Noest Express
 
+> **Draft trap (fixed here):** on NOEST, a created order sits in a DRAFT state
+> that logistics never sees until it is validated — no pickup, no error. Since
+> 1.1, `createOrder()` / `bulkCreateOrders()` **validate automatically** so a
+> returned tracking is pickup-ready. Set `adapter.autoValidate = false` to keep
+> drafts (edit before shipping), then call `shipOrder(tracking)` yourself.
+
 Auth: `Authorization: Bearer <token>` on every request; write/action calls **also** require the account `user_guid` in the JSON body (supplied automatically from your `guid` credential). Read endpoints work with the token alone. Noest prices **per wilaya** and infers status from the latest tracking `event_key`.
 
 | Method | Description |
@@ -559,9 +652,11 @@ Auth: `Authorization: Bearer <token>` on every request; write/action calls **als
 
 ---
 
-### Ecotrack engine (23 providers)
+### Ecotrack engine (74 providers)
 
-One adapter serves the generic `ecotrack` provider and all 22 branded sub-providers (DHD, Conexlog, Anderson, Swift, AlloLivraison, …) — only the base URL and metadata differ. Auth: `Authorization: Bearer <token>` (also sent as an `api_token` query param).
+One adapter serves the generic `ecotrack` provider and all 73 branded sub-providers (DHD, Conexlog, Anderson, Swift, AlloLivraison, Samex, Mars Express, …) — only the base URL and metadata differ. Auth: `Authorization: Bearer <token>` (also sent as an `api_token` query param).
+
+`createOrder()` supports the native **fragile** flag: set `fragile: true` on `CreateOrderData` and the adapter sends `fragile=1`.
 
 | Method | Description |
 |---|---|
@@ -581,6 +676,139 @@ const dhd = courier.provider(PROVIDERS.DHD);
 const rates = await dhd.getRates(null, 31);   // to Oran
 const order = await dhd.createOrder(orderData);
 await dhd.shipOrder(order.trackingNumber, { askCollection: true });
+```
+
+---
+
+### Elogistia
+
+Auth: API key in a `key` header. The API identifies destinations by **wilaya name** — the adapter resolves `toWilayaId` automatically via `getWilayas()` (or pass the name directly).
+
+| Method | Description |
+|---|---|
+| `createOrder(data)` | `POST insertCommande`. Exchange orders use `modeDeLivraison: 4`. |
+| `getOrder(tracking)` | `GET getOrders?tracking=…`. |
+| `getTrackingHistory(tracking)` | `GET getTracking` — event history. |
+| `cancelOrder(tracking)` | `GET deleteOrder`. |
+| `getLabel(tracking, format?)` | `printBordereau_10x15` / `printBordereau_15x20` → PDF base64. |
+| `getWilayas()` / `getCommunes()` / `getOffices()` | Reference data (`getWilayas`, `getMunicipalities`, `getAgences`). |
+| `getRates()` | `GET getShippingCost`. |
+
+Statuses are French (`Ramassée`, `En hub`, `Livrée & réglée`, `Retour remis`, …) and fully mapped to the canonical vocabulary.
+
+---
+
+### Near Delivery
+
+Auth: `ApiKey` + `ApiSecret` headers (`near_delivery: { key, secret }` in config). Near Delivery routes parcels to **buralist relay points**: every order must carry a destination `buralist_id` — resolve it with `getOffices()` and pass it as `stopDeskId`.
+
+| Method | Description |
+|---|---|
+| `createOrder(data)` / `bulkCreateOrders(data[])` | `POST parcels` (native bulk). |
+| `getOrder(tracking)` | `GET track/{tracking}`. |
+| `getTrackingHistory(tracking)` | `GET parcels/{tracking}/status-history/sender`. |
+| `updateOrder(tracking, fields)` / `cancelOrder(tracking)` | `PATCH` / `DELETE parcels/{id}` (id resolved from the tracking). |
+| `getLabel(tracking)` | `GET sender/parcels/{tracking}/bordereau` → PDF base64. |
+| `getOffices()` | Buralists (relay points) — source of `buralist_id`. |
+| `getCenters()` | Sender drop-off centers. |
+| `getRates()` | `GET sender/delivery-fees`. |
+
+Statuses are numeric (0=Pending … 7=Delivered, 10-15=Return flow, 14=Return confirmed) and fully mapped.
+
+---
+
+### E-COM Delivery
+
+Auth: `Token` + `Key` headers (`ecom_delivery: { token, key }` in config). A Procolis-style French API on `ecom-dz.net` (`Api_v1/Colis`, PascalCase fields).
+
+| Method | Description |
+|---|---|
+| `createOrder(data)` / `bulkCreateOrders(data[])` | `POST Api_v1/Colis` (native bulk). |
+| `getOrder(tracking)` / `getOrders(tracking[])` | `GET Api_v1/Colis/Tracking/{t}` / `POST Api_v1/Colis/Liste`. |
+| `getTrackingHistory(tracking)` | `GET Api_v1/Historique/Tracking/{t}`. |
+| `shipOrder(tracking)` / `bulkShipOrders(tracking[])` | `PUT Api_v1/aExpédier` — validate/dispatch. |
+| `updateOrder(tracking, data)` | `PUT Api_v1/Colis/{t}`. |
+| `cancelOrder(tracking)` / `bulkDeleteOrders(tracking[])` | `PUT Api_v1/Supprimer` (native bulk delete). |
+
+23 documented French statuses (`En Préparation`, `Au Bureau`, `Retour Fournisseur`, `Annuler x3`, …) fully mapped.
+
+---
+
+### MDM Express
+
+Auth: `x-api-key` header (`mdm: { token, store_id? }` in config). MDM is an e-commerce + delivery platform (`api.mdm.express`, `/api/v2`). Destinations are identified by a provider-side **cityId** passed in `toCommune`.
+
+MDM natively supports **both** `freeShipping` and `fragile` on order creation.
+
+| Method | Description |
+|---|---|
+| `createOrder(data)` / `bulkCreateOrders(data[])` | `POST api/v2/orders` / `api/v2/orders/bulk`. |
+| `getOrder(tracking)` | `GET api/v2/orders/{tracking}`. |
+| `getTrackingHistory(tracking)` | `GET api/v2/orders/{tracking}/status-history`. |
+| `searchOrders(filters)` | `POST api/v2/orders/search`. |
+| `getStatusStatistics()` | `GET api/v2/orders/statistics/statuses`. |
+| `generateLabels(tracking[])` → `getLabelFile(fileId)` | `POST api/prints/parcel-slips` then `GET api/prints/files/{fileId}`. |
+
+Statuses: `pending`, `confirmed`, `shipped`, `delivered`, `cancelled`, `returned`, `expired`, `archived`.
+
+---
+
+## Webhooks
+
+Two providers support **push notifications** — register a webhook once and stop polling their orders:
+
+```js
+// Maystro
+const m = courier.provider(PROVIDERS.MAYSTRO);
+await m.createWebhook('https://myapp.com/webhooks/maystro');
+await m.listWebhooks();
+await m.listWebhookTypes();     // trigger types (to filter events)
+await m.sendTestWebhook();      // fire a test event
+await m.deleteWebhook('webhook-id');
+
+// ZR Express NEW
+const zr = courier.provider(PROVIDERS.ZREXPRESS_NEW);
+const endpoint = await zr.createWebhook('https://myapp.com/webhooks/zr', ['shipment.delivered', 'shipment.returned']);
+await zr.getWebhookSecret(endpoint.id); // verify incoming payload signatures
+await zr.listWebhooks();
+await zr.updateWebhook(endpoint.id, { url: 'https://myapp.com/hooks/zr' });
+await zr.deleteWebhook(endpoint.id);
+```
+
+Incoming payloads are normalized with `parseWebhookPayload()` — same shape whatever the provider:
+
+```js
+import { parseWebhookPayload, supportsWebhooks, isTerminalStatus } from 'courier-dz';
+
+app.post('/webhooks/:provider', (req, res) => {
+  const event = parseWebhookPayload(req.params.provider, req.body);
+  // event = { provider, trackingNumber, orderId, rawStatus, status, occurredAt, raw }
+  if (event.status === 'delivered') markOrderDelivered(event.trackingNumber);
+  if (event.status === 'returned') restockOrder(event.trackingNumber);
+  res.sendStatus(200);
+});
+
+// Poll (cron) only the providers that can't push:
+if (!supportsWebhooks(order.provider)) pollStatus(order);
+```
+
+---
+
+## Free shipping & fragile flags
+
+`CreateOrderData` carries two logistics flags; each adapter forwards them natively when the provider supports it:
+
+| Flag | Native support | Fallback |
+|---|---|---|
+| `freeShipping: true` | Yalidine engine (`freeshipping`), Zimou (`free_delivery`), MDM (`freeShipping`) | None — check `supportsFreeShipping(id)`; when `false`, don't add the delivery fee to the COD `price` yourself. |
+| `fragile: true` | Ecotrack engine (`fragile=1`), MDM (`fragile`) | Noest, Procolis engine, Elogistia, E-COM Delivery: the adapter prefixes the driver note with `"FRAGILE"`. |
+
+```js
+const order = new CreateOrderData({
+  // …
+  freeShipping: true, // waive the delivery fee at the courier level (if supported)
+  fragile: true,      // flag the parcel as fragile
+});
 ```
 
 ---
@@ -624,10 +852,10 @@ Documented windows (via `getProviderRateLimits(id)`):
 
 | Engine | Enforced limit |
 |---|---|
-| Yalidine / Yalitec / Guepex | 4/s + 45/min + 900/h + 9000/day |
-| Ecotrack (all 23) | 45/min |
+| Yalidine engine (all 6) | 4/s + 45/min + 900/h + 9000/day |
+| Ecotrack (all 74) | 45/min |
 | Noest | 45/min |
-| Maystro, Procolis/ZR legacy, ZR Express NEW, Zimou | 45/min (conservative floor — no published limit) |
+| Maystro, Procolis engine, ZR Express NEW, Zimou, Elogistia, Near Delivery, E-COM Delivery, MDM | 45/min (conservative floor — no published limit) |
 
 You normally don't touch this, but you can inspect a provider's limits:
 

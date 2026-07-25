@@ -20,7 +20,18 @@ export {
   getProviderRateLimits,
   getProviderMetadata,
   getAllProvidersMetadata,
+  supportsFreeShipping,
+  supportsFragile,
+  supportsBulkDelete,
+  supportsBulkCreate,
 } from './enums/Provider.js';
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+export {
+  parseWebhookPayload,
+  supportsWebhooks,
+  WEBHOOK_CAPABLE_PROVIDERS,
+} from './webhooks/WebhookParser.js';
 
 export {
   TRACKING_STATUS,
@@ -58,6 +69,7 @@ export { YalidineCredentials } from './data/credentials/YalidineCredentials.js';
 export { ProcolisCredentials } from './data/credentials/ProcolisCredentials.js';
 export { ZrExpressNewCredentials } from './data/credentials/ZrExpressNewCredentials.js';
 export { NoestCredentials } from './data/credentials/NoestCredentials.js';
+export { NearDeliveryCredentials } from './data/credentials/NearDeliveryCredentials.js';
 
 // ── Adapters (for advanced use / custom extensions) ───────────────────────────
 export { AbstractAdapter } from './adapters/AbstractAdapter.js';
@@ -68,6 +80,11 @@ export { ProcolisAdapter } from './adapters/ProcolisAdapter.js';
 export { ZimouAdapter } from './adapters/ZimouAdapter.js';
 export { ZrExpressNewAdapter } from './adapters/ZrExpressNewAdapter.js';
 export { NoestAdapter } from './adapters/NoestAdapter.js';
+export { ElogistiaAdapter } from './adapters/ElogistiaAdapter.js';
+export { NearDeliveryAdapter } from './adapters/NearDeliveryAdapter.js';
+export { EcomDeliveryAdapter } from './adapters/EcomDeliveryAdapter.js';
+export { MdmAdapter } from './adapters/MdmAdapter.js';
+export { MAYSTRO_STATUS_LABELS } from './adapters/MaystroAdapter.js';
 
 // ── Exceptions ────────────────────────────────────────────────────────────────
 export { CourierError } from './exceptions/CourierError.js';

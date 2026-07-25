@@ -172,6 +172,31 @@ export class ZimouAdapter extends AbstractAdapter {
   }
 
   /**
+   * Live status list for THIS account (`GET v3/helpers/package-statuses`).
+   * Zimou statuses are configurable server-side — the id/name sets differ per
+   * account — so poll this instead of hardcoding when the built-in maps miss.
+   * @returns {Promise<Array<{id:number, name:string, raw:object}>>}
+   */
+  async getPackageStatuses() {
+    const raw = await this.get('v3/helpers/package-statuses');
+    const rows = raw?.data ?? raw;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => ({ id: Number(r.id ?? 0), name: String(r.name ?? ''), raw: r }));
+  }
+
+  /**
+   * Live situation list — the grouping level above statuses
+   * (`GET v3/helpers/package-situations`).
+   * @returns {Promise<Array<{id:number, name:string, raw:object}>>}
+   */
+  async getPackageSituations() {
+    const raw = await this.get('v3/helpers/package-situations');
+    const rows = raw?.data ?? raw;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => ({ id: Number(r.id ?? 0), name: String(r.name ?? ''), raw: r }));
+  }
+
+  /**
    * Get the account's delivery price grid.
    *
    * Live shape of `GET /v3/my/prices` (the OpenAPI does NOT type this response):
