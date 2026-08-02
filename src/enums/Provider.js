@@ -296,6 +296,19 @@ export function supportsBulkCreate(provider) {
     || provider === PROVIDERS.MDM;
 }
 
+/**
+ * Coerce an API flag that arrives as `0`/`1` (number OR string) or a real
+ * boolean into a boolean. DO NOT use `Boolean(v)`: `Boolean("0") === true`
+ * silently marks every commune as stop-desk capable, and a dispatch to a
+ * non-desk commune is then rejected by the carrier (« cette commune n'a pas
+ * de stop desk »).
+ * @param {unknown} v
+ * @returns {boolean}
+ */
+export function toBool01(v) {
+  return v === true || v === 1 || v === '1' || v === 'true';
+}
+
 // ─── Base URLs ────────────────────────────────────────────────────────────────
 
 export const PROVIDER_BASE_URLS = Object.freeze({

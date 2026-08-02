@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits, toBool01 } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { OrderData } from '../data/OrderData.js';
@@ -538,7 +538,7 @@ export class EcotrackAdapter extends AbstractAdapter {
         name: String(c.nom ?? c.name ?? ''),
         wilayaId: Number(c.wilaya_id ?? wilayaId ?? 0),
         zipCode: c.code_postal != null ? String(c.code_postal) : null,
-        hasStopDesk: Boolean(c.has_stop_desk),
+        hasStopDesk: toBool01(c.has_stop_desk),
       }));
   }
 

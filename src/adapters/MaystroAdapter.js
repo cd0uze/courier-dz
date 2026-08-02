@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits, toBool01 } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { OrderData } from '../data/OrderData.js';
@@ -194,7 +194,7 @@ export class MaystroAdapter extends AbstractAdapter {
         name: String(c.name ?? c.nom ?? ''),
         wilayaId: Number(c.wilaya_id ?? c.wilaya ?? wilayaId ?? 0),
         zipCode: c.code_postal != null ? String(c.code_postal) : null,
-        hasStopDesk: c.has_stop_desk != null ? Boolean(c.has_stop_desk) : null,
+        hasStopDesk: c.has_stop_desk != null ? toBool01(c.has_stop_desk) : null,
         raw: c,
       }));
   }

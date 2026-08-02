@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits, toBool01 } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { OrderData } from '../data/OrderData.js';
@@ -477,7 +477,7 @@ export class NoestAdapter extends AbstractAdapter {
     return rows.map((w) => ({
       id: Number(w.code ?? 0),
       name: String(w.nom ?? ''),
-      isActive: Boolean(w.is_active),
+      isActive: toBool01(w.is_active),
     }));
   }
 
@@ -497,7 +497,7 @@ export class NoestAdapter extends AbstractAdapter {
       name: String(c.nom ?? ''),
       wilayaId: Number(c.wilaya_id ?? wilayaId),
       zipCode: c.code_postal != null ? String(c.code_postal) : null,
-      isActive: Boolean(c.is_active),
+      isActive: toBool01(c.is_active),
     }));
   }
 

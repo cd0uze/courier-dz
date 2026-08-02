@@ -1,5 +1,5 @@
 import { AbstractAdapter } from './AbstractAdapter.js';
-import { PROVIDERS, getBaseUrl, getProviderRateLimits } from '../enums/Provider.js';
+import { PROVIDERS, getBaseUrl, getProviderRateLimits, toBool01 } from '../enums/Provider.js';
 import { TRACKING_STATUS } from '../enums/TrackingStatus.js';
 import { DELIVERY_TYPE } from '../enums/DeliveryType.js';
 import { LABEL_TYPE } from '../enums/LabelType.js';
@@ -221,8 +221,8 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
           nameArabic: t.nameArabic ?? null,
           level: String(t.level ?? ''),
           parentId: t.parentId ?? null,
-          hasHomeDelivery: Boolean(this.dig(t, 'delivery', 'hasHomeDelivery')),
-          hasPickupPoint: Boolean(this.dig(t, 'delivery', 'hasPickupPoint')),
+          hasHomeDelivery: toBool01(this.dig(t, 'delivery', 'hasHomeDelivery')),
+          hasPickupPoint: toBool01(this.dig(t, 'delivery', 'hasPickupPoint')),
         });
       }
       if (!res?.hasNext) break;
@@ -255,7 +255,7 @@ export class ZrExpressNewAdapter extends AbstractAdapter {
         out.push({
           id: h.id,
           name: String(h.name ?? ''),
-          isPickupPoint: Boolean(h.isPickupPoint),
+          isPickupPoint: toBool01(h.isPickupPoint),
           cityName: String(addr.city ?? ''),
           communeName: String(addr.district ?? ''),
           cityTerritoryId: addr.cityTerritoryId ?? null,
